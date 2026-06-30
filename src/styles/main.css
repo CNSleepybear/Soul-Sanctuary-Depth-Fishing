@@ -1,0 +1,152 @@
+/* ===== src/styles/main.css =====
+ * Transparent floating widget — only the island is visible.
+ */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  /* REF-4: pixel font stack — VT323 primary, monospace fallback */
+  font-family: 'VT323', 'Courier New', 'Consolas', 'Lucida Console', monospace;
+  letter-spacing: 0.04em;
+}
+
+/* CTR-1: Dark text on transparent background — readable on light desktops.
+ * Light shadow provides contrast against the dark floating island. */
+#fishing-ui {
+  --text-shadow: 0 0 3px rgba(255,255,255,0.4), 0 1px 1px rgba(255,255,255,0.2);
+}
+#fishing-ui > div {
+  text-shadow: var(--text-shadow);
+  color: #222;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  position: relative;
+}
+
+/* REF-5: subtle dark vignette behind the island so the scene remains readable
+ * on light/white desktops without turning the widget into a solid dark box.
+ * The vignette is strongest at the island center and fades to fully
+ * transparent well before the window edges. */
+#app::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120%;
+  height: 120%;
+  background: radial-gradient(
+    circle,
+    rgba(10, 10, 22, 0.52) 0%,
+    rgba(10, 10, 22, 0.28) 22%,
+    rgba(10, 10, 22, 0.10) 42%,
+    rgba(10, 10, 22, 0.02) 56%,
+    transparent 68%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+#game-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  position: relative;
+  z-index: 1;
+}
+
+/* REF-4: pixelated upscale with crisp-edges fallback for cross-browser consistency */
+.pixelated {
+  image-rendering: crisp-edges;
+  image-rendering: pixelated;
+}
+
+/* ===== Breathing drag orb — blends into the scene ===== */
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 6px 1px rgba(255,200,120,0.25); }
+  50%      { box-shadow: 0 0 14px 3px rgba(255,200,120,0.50); }
+}
+@keyframes breathe-red {
+  0%, 100% { box-shadow: 0 0 5px 1px rgba(255,120,100,0.20); }
+  50%      { box-shadow: 0 0 12px 3px rgba(255,100,80,0.45); }
+}
+
+#drag-bar {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: 0;
+  height: 24px;
+  -webkit-app-region: drag;       /* Entire bar is draggable */
+  z-index: 999;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  gap: 10px;
+}
+
+#drag-orb {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: rgba(255,200,120,0.55);
+  animation: breathe 3s ease-in-out infinite;
+  -webkit-app-region: drag;
+  cursor: grab;
+  flex-shrink: 0;
+}
+#drag-orb:active { cursor: grabbing; }
+
+#btn-close {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: rgba(255,140,120,0.40);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+  animation: breathe-red 4s ease-in-out 1s infinite;
+  padding: 0;
+  outline: none;
+}
+#btn-close:hover {
+  background: rgba(255,60,40,0.80);
+  box-shadow: 0 0 16px 4px rgba(255,60,40,0.7);
+  transform: scale(1.4);
+}
+
+/* ===== HUD (minimal, only when needed) ===== */
+#hud-container {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* ===== Notification ===== */
+#notification {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  background: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  color: #e2e8f0;
+  font-size: 10px;
+  letter-spacing: 1px;
+  z-index: 200;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  border-radius: 2px;
+}
