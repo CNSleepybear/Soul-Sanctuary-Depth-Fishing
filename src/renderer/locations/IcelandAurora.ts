@@ -1,545 +1,496 @@
 // ===== src/renderer/locations/IcelandAurora.ts =====
-// 🇮🇸 Iceland — Aurora over the Black Church with basalt columns, turf house,
-// moss lava field, distant glaciers, geothermal steam vents, waterfall and aurora curtains.
-// Art upgraded to match the richer voxel diorama ND standard.
+// 🇮🇸 Iceland �?aurora over the black church.
+//
+// v2 art pass: the Búðakirkja-like black church (white window frames, turf
+// strip) is the single anchor; a turf house, basalt columns and steaming vents
+// are the secondaries. Layered aurora curtains, geothermal steam and snow
+// spindrift supply the atmosphere. Static voxels are instanced into 3 batches.
 
 import * as THREE from 'three';
 import { BaseLocation } from './BaseLocation';
-import { FloatingIsland } from '../rendering/FloatingIsland';
-import { Waterfall } from '../rendering/Waterfall';
-import { MaterialCache } from '../rendering/MaterialCache';
-import { VoxelBuilder } from '../rendering/VoxelBuilder';
 import { LOCATIONS } from '../data/location-data';
+import { Waterfall } from '../rendering/Waterfall';
 import type { LocationData } from '../../shared/types';
-import { updateFlicker, createSurfaceShimmer, updateSurfaceShimmer } from './AtmosphereEffects';
+import {
+  buildGlowOrb,
+  buildInstancedVoxels,
+  createRng,
+  hashSeed,
+  mixHex,
+  shade,
+  type InstancedVoxel,
+} from '../rendering/ArtKit';
+
+const SURFACE_Y = 1.5;
+const TAU = Math.PI * 2;
+
+class VoxelStage {
+  private readonly solidCells: InstancedVoxel[] = [];
+  private readonly trimCells: InstancedVoxel[] = [];
+  private readonly glowCells: InstancedVoxel[] = [];
+
+  solid(
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    color: number,
+    rotY = 0,
+  ): void {
+    this.solidCells.push({ x, y, z, w, h, d, color, rotY });
+  }
+
+  trim(
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    color: number,
+    rotY = 0,
+  ): void {
+    this.trimCells.push({ x, y, z, w, h, d, color, rotY });
+  }
+
+  glow(x: number, y: number, z: number, w: number, h: number, d: number, color: number): void {
+    this.glowCells.push({ x, y, z, w, h, d, color });
+  }
+
+  flush(group: THREE.Group): void {
+    if (this.solidCells.length > 0) {
+      group.add(buildInstancedVoxels(this.solidCells, { castShadow: true, receiveShadow: true }));
+    }
+    if (this.trimCells.length > 0) {
+      group.add(buildInstancedVoxels(this.trimCells, { castShadow: false, receiveShadow: true }));
+    }
+    if (this.glowCells.length > 0) {
+      group.add(
+        buildInstancedVoxels(this.glowCells, {
+          castShadow: false,
+          receiveShadow: false,
+          shading: 'basic',
+        }),
+      );
+    }
+  }
+}
+
+type MoteMode = 'rise' | 'fall' | 'orbit' | 'drift';
+
+interface MoteSpec {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+  d: number;
+  color: number;
+  mode: MoteMode;
+  speed: number;
+  amp: number;
+  phase: number;
+  span: number;
+}
+
+class MoteField {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly motes: MoteSpec[];
+  private readonly matrix = new THREE.Matrix4();
+  private readonly position = new THREE.Vector3();
+  private readonly quaternion = new THREE.Quaternion();
+  private readonly scale = new THREE.Vector3();
+  private readonly color = new THREE.Color();
+
+  constructor(motes: MoteSpec[], opts: { additive?: boolean; opacity?: number } = {}) {
+    this.motes = motes;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: opts.opacity ?? 1,
+      depthWrite: opts.additive !== true,
+      blending: opts.additive === true ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    this.mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, motes.length));
+    motes.forEach((mote, index) => {
+      this.color.setHex(mote.color);
+      this.mesh.setColorAt(index, this.color);
+    });
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
+    this.mesh.count = motes.length;
+    this.update(0);
+  }
+
+  update(time: number): void {
+    for (let i = 0; i < this.motes.length; i++) {
+      const mote = this.motes[i];
+      let x = mote.x;
+      let y = mote.y;
+      let z = mote.z;
+      if (mote.mode === 'rise') {
+        y =
+          mote.y +
+          ((((time * mote.speed + mote.phase * mote.span) % mote.span) + mote.span) % mote.span);
+        x += Math.sin(time * mote.speed * 2.1 + mote.phase * TAU) * mote.amp;
+        z += Math.cos(time * mote.speed * 1.7 + mote.phase * TAU) * mote.amp;
+      } else if (mote.mode === 'fall') {
+        y =
+          mote.y -
+          ((((time * mote.speed + mote.phase * mote.span) % mote.span) + mote.span) % mote.span);
+        x += Math.sin(time * 0.8 + mote.phase * TAU) * mote.amp;
+      } else if (mote.mode === 'orbit') {
+        x += Math.cos(time * mote.speed + mote.phase * TAU) * mote.amp;
+        z += Math.sin(time * mote.speed + mote.phase * TAU) * mote.amp;
+        y += Math.sin(time * mote.speed * 0.7 + mote.phase * TAU) * mote.amp * 0.6;
+      } else {
+        x += Math.sin(time * mote.speed + mote.phase * TAU) * mote.amp;
+        z +=
+          ((((time * mote.speed * 0.36 + mote.phase * mote.span) % mote.span) + mote.span) %
+            mote.span) -
+          mote.span / 2;
+        y += Math.sin(time * mote.speed * 1.3 + mote.phase * TAU) * mote.amp * 0.5;
+      }
+      this.position.set(x, y, z);
+      this.scale.set(mote.w, mote.h, mote.d);
+      this.matrix.compose(this.position, this.quaternion, this.scale);
+      this.mesh.setMatrixAt(i, this.matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+interface FlickerSpec {
+  light: THREE.PointLight;
+  base: number;
+  speed: number;
+  amp: number;
+  phase: number;
+}
 
 export class IcelandAurora extends BaseLocation {
   readonly id = 'iceland';
-  private _particles: THREE.Object3D[] = [];
-  private _flickerLights: {
-    light: THREE.Light;
-    base: number;
-    speed: number;
-    amp: number;
-    noise?: boolean;
-  }[] = [];
-  private _auroraMaterials: THREE.MeshBasicMaterial[] = [];
-  private _waterfall: Waterfall | null = null;
+
+  private readonly motes: MoteField[] = [];
+  private readonly flickers: FlickerSpec[] = [];
+  private waterfall: Waterfall | null = null;
 
   get data(): LocationData {
     return LOCATIONS.find((l) => l.id === 'iceland')!;
   }
 
   protected buildGeometry(): void {
-    const m = {
-      basaltGrey: MaterialCache.getLambert(0x3a3c48),
-      basaltDark: MaterialCache.getLambert(0x2a2c38),
-      churchBlack: MaterialCache.getLambert(0x2a2a32),
-      churchWhite: MaterialCache.getLambert(0xeef0f5),
-      roofRed: MaterialCache.getLambert(0x8a3030),
-      turfGreen: MaterialCache.getLambert(0x3a5a3a),
-      moss: MaterialCache.getLambert(0x4a6a3a),
-      mossDark: MaterialCache.getLambert(0x3a4a2a),
-      glacier: MaterialCache.getLambert(0xddeeff),
-      steam: new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }),
-      windowGlow: MaterialCache.getBasic(0xffaa33),
-    };
-
-    // Theme-aware floating island
-    const islandTheme = this.data.theme?.island;
-    const island = new FloatingIsland(
-      islandTheme ? { ...islandTheme } : { stone: 0x6a6a6a, earth: 0x5a5a5a, grass: 0xffffff },
-    );
+    const island = this.createIsland();
     this.group.add(island.group);
 
-    const layer = new VoxelBuilder();
-    layer.group.position.y = 1.5;
-    this.group.add(layer.group);
+    const art = this.art;
+    const accent = art.accent ?? 0x3ee6a8;
+    const glow = art.glow ?? 0x7df0c0;
+    const shadow = art.shadow ?? 0x1e2c36;
+    const veil = art.veil ?? 0x0e1a22;
+    const key = art.key ?? 0x9fc9e8;
+    const fill = art.fill ?? accent;
+    const islandRadius = island.radius;
 
-    // Raw box helper for grouped objects
-    const box = (
-      w: number,
-      h: number,
-      d: number,
-      mat: THREE.Material,
-      x: number,
-      y: number,
-      z: number,
-      parent: THREE.Group,
-      cast = true,
-    ) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      mesh.position.set(x, y, z);
-      mesh.castShadow = cast;
-      mesh.receiveShadow = true;
-      parent.add(mesh);
-      return mesh;
-    };
+    // Local palette derived from the script: black tar church, white trim,
+    // mossy turf, grey basalt, pale snow.
+    const churchBlack = mixHex(shadow, 0x23262c, 0.45);
+    const whiteTrim = mixHex(key, 0xf4f7f8, 0.72);
+    const turf = mixHex(accent, 0x3d6a3a, 0.62);
+    const basalt = mixHex(shadow, 0x4a4e58, 0.5);
+    const basaltDark = shade(basalt, 0.78);
+    const snow = mixHex(key, 0xeef4f6, 0.62);
+    const snowShade = mixHex(snow, veil, 0.2);
+    const ember = mixHex(glow, 0xffaa33, 0.5);
 
-    // ── Waterfall rim ──
-    this._waterfall = new Waterfall({
-      radius: 4.6,
-      innerRadius: 4.0,
-      yBase: -0.2,
-      heightMin: 1.0,
-      heightMax: 1.8,
-      color: 0xaaccdd,
-      opacity: 0.5,
-      density: 0.7,
-    });
-    this.group.add(this._waterfall.group);
+    const stage = new VoxelStage();
+    const rng = createRng(hashSeed('iceland:aurora'));
 
-    // Moss lava field ground patches
-    for (let i = 0; i < 25; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 2 + Math.random() * 4.5;
-      const s = 0.3 + Math.random() * 0.5;
-      const mat = Math.random() > 0.4 ? m.moss : m.mossDark;
-      box(s, 0.12, s, mat, Math.cos(a) * r, 0.06, Math.sin(a) * r, layer.group);
+    // ── Snow / moss ground patches ──
+    for (let i = 0; i < 22; i++) {
+      const angle = rng.nextFloat(0, TAU);
+      const radius = rng.nextFloat(1.6, islandRadius - 0.6);
+      stage.trim(
+        Math.cos(angle) * radius,
+        SURFACE_Y + 0.05,
+        Math.sin(angle) * radius,
+        rng.nextFloat(0.4, 0.85),
+        0.1,
+        rng.nextFloat(0.35, 0.7),
+        rng.chance(0.6) ? snow : snowShade,
+        rng.nextFloat(-0.4, 0.4),
+      );
     }
 
-    // Basalt columns
-    const basalt = new THREE.Group();
-    const col = (bx: number, bz: number, bh: number) => {
-      box(0.5, bh, 0.5, m.basaltGrey, bx, bh / 2, bz, basalt);
+    // ── Landmark: black church with white window frames + turf roof strip ──
+    const churchX = -2.6;
+    const churchZ = -1.9;
+    stage.trim(churchX, SURFACE_Y + 0.1, churchZ, 2.0, 0.2, 3.0, basaltDark);
+    stage.solid(churchX, SURFACE_Y + 0.2 + 0.95, churchZ, 1.5, 1.9, 2.6, churchBlack);
+    // stepped steep roof
+    stage.solid(churchX, SURFACE_Y + 2.2, churchZ, 1.62, 0.22, 2.72, churchBlack);
+    stage.solid(churchX, SURFACE_Y + 2.42, churchZ, 1.32, 0.22, 2.55, shade(churchBlack, 1.12));
+    stage.solid(churchX, SURFACE_Y + 2.64, churchZ, 1.0, 0.22, 2.3, churchBlack);
+    stage.solid(churchX, SURFACE_Y + 2.86, churchZ, 0.66, 0.22, 1.95, shade(churchBlack, 1.12));
+    stage.solid(churchX, SURFACE_Y + 3.08, churchZ, 0.34, 0.22, 1.5, churchBlack);
+    // turf strip along the roof eaves
+    stage.trim(churchX, SURFACE_Y + 2.08, churchZ, 1.7, 0.08, 2.85, turf);
+    // tower + white cross
+    stage.solid(churchX, SURFACE_Y + 0.2 + 1.5, churchZ + 1.65, 0.8, 3.0, 0.8, churchBlack);
+    stage.solid(
+      churchX,
+      SURFACE_Y + 3.3,
+      churchZ + 1.65,
+      0.95,
+      0.16,
+      0.95,
+      shade(churchBlack, 1.12),
+    );
+    stage.trim(churchX, SURFACE_Y + 3.5, churchZ + 1.65, 0.6, 0.22, 0.6, churchBlack);
+    stage.glow(churchX, SURFACE_Y + 3.82, churchZ + 1.65, 0.07, 0.5, 0.07, whiteTrim);
+    stage.glow(churchX, SURFACE_Y + 3.9, churchZ + 1.65, 0.34, 0.07, 0.07, whiteTrim);
+    // white window frames + warm windows on the camera-facing side (+z)
+    for (const wx of [-0.38, 0.38]) {
+      stage.glow(churchX + wx, SURFACE_Y + 1.35, churchZ + 1.32, 0.3, 0.5, 0.06, ember);
+      stage.trim(
+        churchX + wx - 0.22,
+        SURFACE_Y + 1.35,
+        churchZ + 1.34,
+        0.06,
+        0.64,
+        0.06,
+        whiteTrim,
+      );
+      stage.trim(
+        churchX + wx + 0.22,
+        SURFACE_Y + 1.35,
+        churchZ + 1.34,
+        0.06,
+        0.64,
+        0.06,
+        whiteTrim,
+      );
+      stage.trim(churchX + wx, SURFACE_Y + 1.66, churchZ + 1.34, 0.5, 0.06, 0.06, whiteTrim);
+      stage.trim(churchX + wx, SURFACE_Y + 1.04, churchZ + 1.34, 0.5, 0.06, 0.06, whiteTrim);
+    }
+    // white door frame
+    stage.trim(churchX, SURFACE_Y + 0.66, churchZ + 1.34, 0.44, 1.0, 0.06, whiteTrim);
+    stage.glow(churchX, SURFACE_Y + 0.62, churchZ + 1.36, 0.3, 0.8, 0.05, shade(ember, 0.8));
+
+    // ── Secondary: turf house with a grass roof ──
+    const turfX = 2.1;
+    const turfZ = -2.3;
+    stage.solid(turfX, SURFACE_Y + 0.55, turfZ, 1.7, 1.1, 1.5, churchBlack);
+    stage.solid(turfX, SURFACE_Y + 1.2, turfZ, 2.0, 0.36, 1.8, turf);
+    stage.trim(turfX, SURFACE_Y + 1.42, turfZ, 1.7, 0.1, 1.5, mixHex(turf, snow, 0.3));
+    stage.glow(turfX, SURFACE_Y + 0.62, turfZ + 0.78, 0.32, 0.3, 0.06, ember);
+
+    // ── Secondary: basalt column cluster ──
+    const basaltColumn = (x: number, z: number, h: number, w: number): void => {
+      stage.solid(x, SURFACE_Y + h / 2, z, w, h, w, basalt);
+      stage.trim(x, SURFACE_Y + h + 0.03, z, w * 0.9, 0.08, w * 0.9, snow);
     };
-    col(2.8, -3, 2.4);
-    col(3.2, -3, 3.2);
-    col(2.4, -3, 1.6);
-    col(2.8, -2.5, 1.8);
-    col(3.2, -2.5, 2.6);
-    col(2.8, -2, 1.0);
-    col(-3, 3, 2.8);
-    col(-2.5, 3, 2.0);
-    layer.group.add(basalt);
+    basaltColumn(3.4, -0.9, 1.9, 0.5);
+    basaltColumn(3.9, -0.7, 1.4, 0.42);
+    basaltColumn(3.1, -0.5, 1.1, 0.38);
+    basaltColumn(3.7, -0.2, 0.8, 0.34);
 
-    // Distant glaciers
-    const glacier = new THREE.Group();
-    box(3.5, 1.2, 1.5, m.glacier, -5, 0.6, -4, glacier);
-    box(2.8, 0.9, 1.2, m.glacier, -3.5, 0.45, -5, glacier);
-    box(4.0, 1.5, 1.8, m.glacier, 5.5, 0.75, -4.5, glacier);
-    box(2.2, 0.7, 1.0, m.glacier, 3.5, 0.35, -5.2, glacier);
-    glacier.position.set(0, 0, -3);
-    layer.group.add(glacier);
+    // ── Secondary: geothermal vent with a stone ring ──
+    const ventX = 1.0;
+    const ventZ = 0.9;
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * TAU;
+      stage.trim(
+        ventX + Math.cos(a) * 0.5,
+        SURFACE_Y + 0.12,
+        ventZ + Math.sin(a) * 0.5,
+        0.3,
+        0.24,
+        0.3,
+        basaltDark,
+        a,
+      );
+    }
+    stage.glow(ventX, SURFACE_Y + 0.14, ventZ, 0.34, 0.1, 0.34, mixHex(accent, 0xffffff, 0.3));
 
-    // Black Church
-    const church = new THREE.Group();
-    box(2.6, 1.8, 4, m.churchBlack, 0, 0.9, 0, church);
+    // ── Foreground frame: basalt boulders + snow drift (camera side) ──
+    const rockX = 4.7;
+    const rockZ = 2.3;
+    stage.solid(rockX, SURFACE_Y + 0.35, rockZ, 0.9, 0.7, 0.7, basalt);
+    stage.solid(rockX + 0.7, SURFACE_Y + 0.24, rockZ + 0.4, 0.6, 0.48, 0.55, basaltDark);
+    stage.solid(rockX - 0.6, SURFACE_Y + 0.2, rockZ - 0.3, 0.5, 0.4, 0.5, basalt);
+    stage.trim(rockX, SURFACE_Y + 0.72, rockZ, 0.86, 0.1, 0.66, snow);
+    stage.trim(rockX + 0.7, SURFACE_Y + 0.48, rockZ + 0.4, 0.56, 0.08, 0.5, snowShade);
+    // drifts
     for (let i = 0; i < 5; i++) {
-      const w = 2.8 - i * 0.55;
-      box(w, 0.25, 4.2, m.roofRed, 0, 1.9 + i * 0.25, 0, church);
-    }
-    box(0.9, 3.2, 0.9, m.churchBlack, 0, 1.6, 1.5, church);
-    for (let j = 0; j < 4; j++) {
-      const w = 1.0 - j * 0.25;
-      box(w, 0.25, w, m.roofRed, 0, 3.32 + j * 0.25, 1.5, church);
-    }
-    box(0.08, 0.4, 0.08, m.churchWhite, 0, 4.4, 1.5, church);
-    box(0.24, 0.08, 0.08, m.churchWhite, 0, 4.45, 1.5, church);
-
-    // White window frames and glowing windows
-    const frontFrame = new THREE.Group();
-    frontFrame.add(box(0.52, 0.06, 0.08, m.churchWhite, 0, 1.5, 1.98, frontFrame));
-    frontFrame.add(box(0.52, 0.06, 0.08, m.churchWhite, 0, 0.9, 1.98, frontFrame));
-    frontFrame.add(box(0.06, 0.72, 0.08, m.churchWhite, -0.23, 1.2, 1.98, frontFrame));
-    frontFrame.add(box(0.06, 0.72, 0.08, m.churchWhite, 0.23, 1.2, 1.98, frontFrame));
-    church.add(frontFrame);
-    box(0.4, 0.6, 0.1, m.windowGlow, 0, 1.2, 1.96, church, false);
-
-    const sideFrame = new THREE.Group();
-    sideFrame.add(box(0.08, 0.58, 0.52, m.churchWhite, -1.33, 1.0, 0, sideFrame));
-    sideFrame.add(box(0.08, 0.06, 0.52, m.churchWhite, -1.33, 1.29, 0, sideFrame));
-    sideFrame.add(box(0.08, 0.06, 0.52, m.churchWhite, -1.33, 0.71, 0, sideFrame));
-    church.add(sideFrame);
-    box(0.1, 0.5, 0.4, m.windowGlow, -1.31, 1.0, 0, church, false);
-    const sideFrameR = sideFrame.clone();
-    sideFrameR.position.x = 2.62;
-    church.add(sideFrameR);
-    box(0.1, 0.5, 0.4, m.windowGlow, 1.31, 1.0, 0, church, false);
-
-    // Turf strips on roof edges
-    box(3.0, 0.06, 4.4, m.turfGreen, 0, 2.12, 0, church);
-    box(1.2, 0.06, 1.2, m.turfGreen, 0, 3.55, 1.5, church);
-
-    church.position.set(-0.5, 0, -0.5);
-    layer.group.add(church);
-
-    // Small turf house
-    const turfHouse = new THREE.Group();
-    box(1.8, 1.2, 1.8, m.turfGreen, 0, 0.6, 0, turfHouse);
-    box(1.6, 0.8, 1.6, m.churchBlack, 0, 0.4, 0, turfHouse);
-    box(0.4, 0.5, 0.05, m.windowGlow, 0, 0.6, 0.92, turfHouse, false);
-    box(2.0, 0.15, 2.0, m.turfGreen, 0, 1.28, 0, turfHouse);
-    turfHouse.position.set(2.5, 0, -1.5);
-    layer.group.add(turfHouse);
-
-    // Lights
-    const cp = new THREE.PointLight(0xffaa33, 4.0, 7);
-    cp.position.set(-0.5, 1.2, -0.5);
-    layer.group.add(cp);
-    this._flickerLights.push({ light: cp, base: 3.8, speed: 2.2, amp: 0.2 });
-
-    const ad = new THREE.DirectionalLight(0x2bf098, 0.6);
-    ad.position.set(2, 6, 2);
-    this.scene.add(ad);
-    this._flickerLights.push({ light: ad, base: 0.6, speed: 0.5, amp: 0.25, noise: true });
-
-    // Geothermal steam vents
-    const steamGeo = new THREE.BoxGeometry(0.22, 0.22, 0.22);
-    const ventPositions: Array<[number, number]> = [
-      [2.4, 2.0],
-      [-2.6, 1.6],
-      [2.0, -2.4],
-      [-1.8, -2.0],
-    ];
-    for (const [vx, vz] of ventPositions) {
-      box(0.4, 0.2, 0.4, m.basaltDark, vx, 0.1, vz, layer.group);
-      for (let k = 0; k < 5; k++) {
-        const puff = new THREE.Mesh(steamGeo, m.steam.clone());
-        puff.position.set(vx, 0.3 + k * 0.3, vz);
-        puff.userData = {
-          type: 'steam',
-          speedY: 0.005 + Math.random() * 0.005,
-          swaySpeed: 0.7 + Math.random() * 0.8,
-          swayAmp: 0.004 + Math.random() * 0.004,
-          initialY: 0.25,
-          maxHeight: 1.4 + Math.random() * 0.6,
-        };
-        layer.group.add(puff);
-        this._particles.push(puff);
-      }
+      stage.trim(
+        3.4 + rng.nextFloat(0, 2.2),
+        SURFACE_Y + 0.07,
+        1.4 + rng.nextFloat(0, 2.2),
+        rng.nextFloat(0.4, 0.9),
+        0.12,
+        rng.nextFloat(0.3, 0.7),
+        snow,
+        rng.nextFloat(-0.5, 0.5),
+      );
     }
 
-    // Stars
-    const starGeo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
-    const starMat = new THREE.MeshBasicMaterial({
-      color: 0xffffff,
-      transparent: true,
-      opacity: 0.7,
-      depthWrite: false,
+    stage.flush(this.group);
+
+    // ── Local lights: warm church windows, turf house, cool aurora spill ──
+    const windowLight = new THREE.PointLight(0xffaa33, 3.6, 6.5);
+    windowLight.position.set(churchX, SURFACE_Y + 1.3, churchZ + 1.5);
+    this.group.add(windowLight);
+    this.flickers.push({ light: windowLight, base: 3.6, speed: 2.1, amp: 0.4, phase: 0.4 });
+
+    const hutLight = new THREE.PointLight(ember, 2.0, 5);
+    hutLight.position.set(turfX, SURFACE_Y + 0.7, turfZ + 0.9);
+    this.group.add(hutLight);
+    this.flickers.push({ light: hutLight, base: 2.0, speed: 2.8, amp: 0.3, phase: 1.7 });
+
+    const auroraLight = new THREE.PointLight(fill, 3.0, 12);
+    auroraLight.position.set(churchX, SURFACE_Y + 4.6, churchZ);
+    this.group.add(auroraLight);
+    this.flickers.push({ light: auroraLight, base: 3.0, speed: 0.5, amp: 0.9, phase: 0.9 });
+
+    // Aurora focal halo above the church spire.
+    this.group.add(
+      buildGlowOrb({
+        color: glow,
+        size: 0.4,
+        position: new THREE.Vector3(churchX, SURFACE_Y + 3.9, churchZ + 1.65),
+        layers: 2,
+      }),
+    );
+
+    this.waterfall = new Waterfall({
+      radius: islandRadius + 0.25,
+      innerRadius: islandRadius - 0.2,
+      yBase: -0.2,
+      heightMin: 2.4,
+      heightMax: 3.4,
+      color: mixHex(key, 0xbfe0e8, 0.5),
+      opacity: 0.45,
+      density: 0.6,
     });
-    for (let i = 0; i < 80; i++) {
-      const p = new THREE.Mesh(starGeo, starMat.clone());
-      p.position.set((Math.random() - 0.5) * 40, 5 + Math.random() * 12, -8 - Math.random() * 12);
-      p.userData = {
-        type: 'star',
-        pulseSpeed: 0.5 + Math.random() * 1.5,
-        seed: Math.random() * 100,
-      };
-      layer.group.add(p);
-      this._particles.push(p);
-    }
-
-    // Aurora curtains
-    const curtainColors = [
-      0x2bf098, 0x22ddff, 0x66ffcc, 0x88ffff, 0x2bf098, 0x44ffee, 0x66ccff, 0xaaffcc,
-    ];
-    for (let b = 0; b < 10; b++) {
-      const curtainMat = new THREE.MeshBasicMaterial({
-        color: curtainColors[b % curtainColors.length],
-        transparent: true,
-        opacity: 0.06 + Math.random() * 0.07,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const h = 10 + Math.random() * 6;
-      const curtain = new THREE.Mesh(
-        new THREE.BoxGeometry(0.15 + Math.random() * 0.25, h, 0.03),
-        curtainMat,
-      );
-      curtain.position.set(
-        (Math.random() - 0.5) * 22,
-        4 + Math.random() * 4,
-        -3 + Math.random() * 10,
-      );
-      curtain.rotation.y = (Math.random() - 0.5) * 0.8;
-      curtain.userData = {
-        type: 'curtain',
-        speedX: 0.0006 + Math.random() * 0.0012,
-        driftY: 0.0004 + Math.random() * 0.0006,
-        waveSpeed: 0.15 + Math.random() * 0.2,
-        waveAmp: 0.02 + Math.random() * 0.03,
-        pulseSpeed: 0.22 + Math.random() * 0.28,
-        seed: Math.random() * 100,
-        baseOpacity: curtainMat.opacity,
-      };
-      layer.group.add(curtain);
-      this._particles.push(curtain);
-    }
-
-    // Aurora rays
-    const rayMats = [
-      new THREE.MeshBasicMaterial({
-        color: 0x2bf098,
-        transparent: true,
-        opacity: 0.28,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-      new THREE.MeshBasicMaterial({
-        color: 0x22ddff,
-        transparent: true,
-        opacity: 0.28,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-      new THREE.MeshBasicMaterial({
-        color: 0x88ffcc,
-        transparent: true,
-        opacity: 0.24,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-      new THREE.MeshBasicMaterial({
-        color: 0xaaffff,
-        transparent: true,
-        opacity: 0.22,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-      new THREE.MeshBasicMaterial({
-        color: 0x44ffee,
-        transparent: true,
-        opacity: 0.24,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      }),
-    ];
-    for (let i = 0; i < 48; i++) {
-      const mat = rayMats[i % rayMats.length].clone();
-      const h = 4 + Math.random() * 7;
-      const p = new THREE.Mesh(new THREE.BoxGeometry(0.04 + Math.random() * 0.06, h, 0.02), mat);
-      const arcIndex = Math.floor(Math.random() * 6);
-      const arcCenterX = (arcIndex - 2.5) * 3.0 + (Math.random() - 0.5) * 1.8;
-      const arcCenterZ = -2 + Math.random() * 8;
-      p.position.set(
-        arcCenterX + (Math.random() - 0.5) * 4.5,
-        3.5 + Math.random() * 3.5,
-        arcCenterZ + (Math.random() - 0.5) * 3.5,
-      );
-      p.rotation.set(
-        (Math.random() - 0.5) * 0.3,
-        (Math.random() - 0.5) * 1.0,
-        (Math.random() - 0.5) * 0.3,
-      );
-      p.userData = {
-        type: 'ray',
-        speedX: 0.0015 + Math.random() * 0.003,
-        driftY: 0.0008 + Math.random() * 0.0015,
-        waveSpeed: 0.5 + Math.random() * 0.9,
-        waveAmp: 0.015 + Math.random() * 0.025,
-        rotSpeed: 0.03 + Math.random() * 0.06,
-        pulseSpeed: 0.6 + Math.random() * 0.8,
-        seed: Math.random() * 100,
-        baseOpacity: mat.opacity,
-      };
-      layer.group.add(p);
-      this._particles.push(p);
-    }
-
-    // Aurora canopy
-    const canopyColors = [0x22ddff, 0x2bf098, 0x88ffff];
-    for (let c = 0; c < 4; c++) {
-      const canopyMat = new THREE.MeshBasicMaterial({
-        color: canopyColors[c % canopyColors.length],
-        transparent: true,
-        opacity: 0.08 + Math.random() * 0.06,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-      });
-      const canopy = new THREE.Mesh(new THREE.BoxGeometry(28, 0.02, 1.8), canopyMat);
-      canopy.position.set((Math.random() - 0.5) * 6, 7.5 + c * 0.5, -2 + Math.random() * 5);
-      canopy.userData = {
-        type: 'canopy',
-        speedX: 0.0008 + Math.random() * 0.0012,
-        waveSpeed: 0.18 + Math.random() * 0.22,
-        waveAmp: 0.03 + Math.random() * 0.04,
-        pulseSpeed: 0.25 + Math.random() * 0.3,
-        seed: Math.random() * 100,
-        baseOpacity: canopyMat.opacity,
-      };
-      layer.group.add(canopy);
-      this._particles.push(canopy);
-    }
-
-    // Aurora ions
-    const ionGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
-    const ionMat = new THREE.MeshBasicMaterial({
-      color: 0xc8ffff,
-      transparent: true,
-      opacity: 0.4,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    for (let i = 0; i < 40; i++) {
-      const p = new THREE.Mesh(ionGeo, ionMat.clone());
-      p.position.set(
-        (Math.random() - 0.5) * 18,
-        5.5 + Math.random() * 3.5,
-        (Math.random() - 0.5) * 10,
-      );
-      p.userData = {
-        type: 'ion',
-        pulseSpeed: 1.0 + Math.random() * 2.0,
-        seed: Math.random() * 100,
-      };
-      layer.group.add(p);
-      this._particles.push(p);
-    }
-
-    // Ground aurora reflection
-    const reflectMat = new THREE.MeshBasicMaterial({
-      color: 0x2bf098,
-      transparent: true,
-      opacity: 0.06,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    for (let r = 0; r < 6; r++) {
-      const p = new THREE.Mesh(
-        new THREE.BoxGeometry(5 + Math.random() * 4, 0.02, 1.2),
-        reflectMat.clone(),
-      );
-      p.position.set(
-        (Math.random() - 0.5) * 14,
-        -1.4 + Math.random() * 0.2,
-        -2 + Math.random() * 8,
-      );
-      p.userData = {
-        type: 'reflection',
-        pulseSpeed: 0.4 + Math.random() * 0.5,
-        seed: Math.random() * 100,
-        baseOpacity: p.material.opacity,
-      };
-      layer.group.add(p);
-      this._particles.push(p);
-    }
+    this.group.add(this.waterfall.group);
 
     this.scene.add(this.group);
   }
 
   protected buildAtmosphere(): void {
-    const layer = this.group.children[1] as THREE.Group;
-    const atm = this.data.theme?.atmosphere;
-    const soulColor = new THREE.Color(atm?.soulColor ?? 0xffaa33);
-    // Faint soul-colored shimmer on the ground
-    const shimmer = createSurfaceShimmer(layer, 10, soulColor.getHex(), { x: 12, z: 12, y: -1.35 });
-    this._particles.push(...shimmer);
-    // Collect all additive aurora materials
-    this.group.traverse((child) => {
-      if (
-        child instanceof THREE.Mesh &&
-        !Array.isArray(child.material) &&
-        child.material instanceof THREE.MeshBasicMaterial &&
-        child.material.blending === THREE.AdditiveBlending
-      ) {
-        this._auroraMaterials.push(child.material);
-      }
-    });
-  }
+    const art = this.art;
+    const accent = art.accent ?? 0x3ee6a8;
+    const glow = art.glow ?? 0x7df0c0;
+    const fill = art.fill ?? accent;
+    const key = art.key ?? 0x9fc9e8;
+    const veil = art.veil ?? 0x0e1a22;
+    const rng = createRng(hashSeed('iceland:atmosphere'));
 
-  applySoulAmbience(soulCount: number): void {
-    super.applySoulAmbience(soulCount);
-    if (soulCount <= 0) return;
-    const atm = this.data.theme?.atmosphere;
-    const soulColor = new THREE.Color(atm?.soulColor ?? 0xffaa33);
-    for (const mat of this._auroraMaterials) {
-      mat.color.lerp(soulColor, 0.1);
+    // 1) Aurora curtains: layered additive bands, green core + cyan edge.
+    const aurora: MoteSpec[] = [];
+    const bandColors = [accent, fill, glow, mixHex(accent, key, 0.45)];
+    for (let i = 0; i < 9; i++) {
+      aurora.push({
+        x: rng.nextFloat(-5.5, 5.5),
+        y: rng.nextFloat(SURFACE_Y + 4.6, SURFACE_Y + 7.2),
+        z: rng.nextFloat(-4.5, 1.5),
+        w: rng.nextFloat(1.4, 2.8),
+        h: rng.nextFloat(1.2, 3.2),
+        d: 0.06,
+        color: bandColors[i % bandColors.length],
+        mode: 'orbit',
+        speed: rng.nextFloat(0.03, 0.08),
+        amp: rng.nextFloat(0.3, 0.9),
+        phase: rng.next(),
+        span: 1,
+      });
     }
+    this.motes.push(new MoteField(aurora, { additive: true, opacity: 0.26 }));
+
+    // 2) Geothermal steam rising from the vent.
+    const steam: MoteSpec[] = [];
+    for (let i = 0; i < 14; i++) {
+      steam.push({
+        x: 1.0 + rng.nextFloat(-0.25, 0.25),
+        y: SURFACE_Y + 0.2,
+        z: 0.9 + rng.nextFloat(-0.25, 0.25),
+        w: rng.nextFloat(0.2, 0.4),
+        h: rng.nextFloat(0.2, 0.4),
+        d: rng.nextFloat(0.2, 0.4),
+        color: mixHex(0xffffff, veil, 0.25),
+        mode: 'rise',
+        speed: rng.nextFloat(0.16, 0.3),
+        amp: rng.nextFloat(0.1, 0.35),
+        phase: rng.next(),
+        span: 3.2,
+      });
+    }
+    this.motes.push(new MoteField(steam, { opacity: 0.3 }));
+
+    // 3) Snow spindrift skimming the snowfields.
+    const drift: MoteSpec[] = [];
+    for (let i = 0; i < 22; i++) {
+      drift.push({
+        x: rng.nextFloat(-6, 6),
+        y: SURFACE_Y + rng.nextFloat(0.2, 2.2),
+        z: rng.nextFloat(-6, 6),
+        w: 0.08,
+        h: 0.08,
+        d: 0.08,
+        color: mixHex(key, 0xffffff, 0.6),
+        mode: 'drift',
+        speed: rng.nextFloat(0.3, 0.6),
+        amp: rng.nextFloat(0.2, 0.6),
+        phase: rng.next(),
+        span: 4,
+      });
+    }
+    this.motes.push(new MoteField(drift, { additive: true, opacity: 0.5 }));
+
+    // 4) Aurora ions twinkling above the church.
+    const ions: MoteSpec[] = [];
+    for (let i = 0; i < 16; i++) {
+      ions.push({
+        x: rng.nextFloat(-5, 5),
+        y: rng.nextFloat(SURFACE_Y + 3.6, SURFACE_Y + 6.4),
+        z: rng.nextFloat(-5, 2.5),
+        w: 0.07,
+        h: 0.07,
+        d: 0.07,
+        color: mixHex(glow, 0xd8fff0, 0.4),
+        mode: 'orbit',
+        speed: rng.nextFloat(0.4, 0.9),
+        amp: rng.nextFloat(0.4, 1.1),
+        phase: rng.next(),
+        span: 1,
+      });
+    }
+    this.motes.push(new MoteField(ions, { additive: true, opacity: 0.55 }));
+
+    for (const mote of this.motes) this.group.add(mote.mesh);
   }
 
   protected updateAtmosphere(_dt: number, time: number): void {
-    // Waterfall
-    this._waterfall?.update(time);
-
-    for (const p of this._particles) {
-      const ud = p.userData;
-      if (!ud) continue;
-      if (ud.type === 'shimmer' && p instanceof THREE.Mesh) {
-        updateSurfaceShimmer(time, [p]);
-      }
-    }
-  }
-
-  update(_dt: number, time: number): void {
-    for (const p of this._particles) {
-      const ud = p.userData;
-      if (!ud) continue;
-      if (ud.type === 'ray') {
-        p.position.x += ud.speedX;
-        p.position.y += ud.driftY;
-        p.position.z += Math.sin(time * ud.waveSpeed + ud.seed) * ud.waveAmp;
-        p.rotation.z += Math.sin(time * ud.rotSpeed + ud.seed) * 0.0012;
-        p.rotation.y += Math.cos(time * ud.rotSpeed * 0.7 + ud.seed) * 0.0018;
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          const pulse = 0.65 + Math.sin(time * ud.pulseSpeed + ud.seed) * 0.35;
-          p.material.opacity = Math.max(0.03, ud.baseOpacity * pulse);
-        }
-        if (p.position.x > 12) {
-          p.position.x = -12;
-          p.position.y = 3.5 + Math.random() * 3.5;
-          p.position.z = -2 + Math.random() * 8;
-        }
-      } else if (ud.type === 'curtain') {
-        p.position.x += ud.speedX;
-        p.position.y += ud.driftY;
-        p.position.z += Math.sin(time * ud.waveSpeed + ud.seed) * ud.waveAmp;
-        p.rotation.y += Math.sin(time * ud.waveSpeed * 0.5 + ud.seed) * 0.0005;
-        p.scale.y = 1 + Math.sin(time * ud.pulseSpeed + ud.seed) * 0.4;
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          const pulse = 0.7 + Math.cos(time * ud.pulseSpeed * 0.6 + ud.seed) * 0.3;
-          p.material.opacity = Math.max(0.03, ud.baseOpacity * pulse);
-        }
-        if (p.position.x > 14) p.position.x = -14;
-      } else if (ud.type === 'canopy') {
-        p.position.x += ud.speedX;
-        p.position.z += Math.sin(time * ud.waveSpeed + ud.seed) * ud.waveAmp;
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          const pulse = 0.6 + Math.sin(time * ud.pulseSpeed + ud.seed) * 0.4;
-          p.material.opacity = Math.max(0.02, ud.baseOpacity * pulse);
-        }
-        if (p.position.x > 14) p.position.x = -14;
-      } else if (ud.type === 'ion') {
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          p.material.opacity = 0.08 + Math.abs(Math.sin(time * ud.pulseSpeed + ud.seed)) * 0.32;
-        }
-      } else if (ud.type === 'star') {
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          p.material.opacity = 0.25 + Math.abs(Math.sin(time * ud.pulseSpeed + ud.seed)) * 0.45;
-        }
-      } else if (ud.type === 'reflection') {
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          const pulse = 0.5 + Math.sin(time * ud.pulseSpeed + ud.seed) * 0.5;
-          p.material.opacity = Math.max(0.01, ud.baseOpacity * pulse);
-        }
-      } else if (ud.type === 'steam') {
-        p.position.y += ud.speedY;
-        p.position.x += Math.sin(time * ud.swaySpeed) * ud.swayAmp;
-        p.position.z += Math.cos(time * ud.swaySpeed) * ud.swayAmp;
-        if (p instanceof THREE.Mesh && !Array.isArray(p.material)) {
-          const life = (p.position.y - ud.initialY) / (ud.maxHeight - ud.initialY);
-          p.material.opacity = Math.max(0, 0.5 * (1 - life));
-        }
-        if (p.position.y > ud.maxHeight) {
-          p.position.y = ud.initialY;
-          if (p instanceof THREE.Mesh && !Array.isArray(p.material)) p.material.opacity = 0.5;
-        }
-      }
-    }
-    for (const fl of this._flickerLights) {
-      updateFlicker(time, fl);
+    this.waterfall?.update(time);
+    for (const mote of this.motes) mote.update(time);
+    for (const flicker of this.flickers) {
+      flicker.light.intensity =
+        flicker.base + Math.sin(time * flicker.speed + flicker.phase) * flicker.amp;
     }
   }
 
   destroy(): void {
-    this._waterfall?.dispose();
-    this._waterfall = null;
-    for (const fl of this._flickerLights) {
-      this.scene.remove(fl.light);
-    }
-    this._particles = [];
-    this._flickerLights = [];
-    this._auroraMaterials = [];
+    this.waterfall?.dispose();
+    this.waterfall = null;
+    this.motes.length = 0;
+    this.flickers.length = 0;
     super.destroy();
   }
 }

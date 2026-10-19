@@ -3,6 +3,7 @@
 // Styled to match #drag-orb and #btn-close in the drag bar.
 
 import * as THREE from 'three';
+import { CAMERA_TARGET } from './Renderer';
 
 export class CameraController {
   private camera: THREE.OrthographicCamera;
@@ -16,7 +17,7 @@ export class CameraController {
 
   constructor(camera: THREE.OrthographicCamera, dragBar: HTMLElement) {
     this.camera = camera;
-    this.target = new THREE.Vector3(0, 1.2, 0);
+    this.target = CAMERA_TARGET.clone();
 
     const dx = camera.position.x - this.target.x;
     const dz = camera.position.z - this.target.z;
@@ -133,7 +134,7 @@ export class CameraController {
 
   /** Per-frame auto-rotate + subtle breathing bob. */
   update(dt: number): void {
-    this.angle += dt * 0.15; // slightly faster for noticeable rotation
+    this.angle += dt * 0.028; // A quiet orbit keeps the desktop diorama restful.
     this._bobTime += dt;
     // Subtle height oscillation: ±0.12 units over ~6 seconds
     const bobOffset = Math.sin(this._bobTime * 1.05) * 0.12;

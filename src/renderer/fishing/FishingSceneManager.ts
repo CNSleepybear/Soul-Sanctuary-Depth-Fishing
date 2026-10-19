@@ -15,10 +15,10 @@ import { LOCATIONS } from '../data/location-data';
 import type { SpiritFish } from '../../shared/types';
 
 // World-space reference points
-const CAST_TARGET = new THREE.Vector3(4, -2.0, -1.5);
-const IDLE_POS = new THREE.Vector3(4, -2.0, -1.5);
+const CAST_TARGET = new THREE.Vector3(1.8, -1.91, 7.0);
+const IDLE_POS = CAST_TARGET.clone();
 // Fisherman position on island edge
-const FISHERMAN_POS = new THREE.Vector3(-3, 1.5, -2.5);
+const FISHERMAN_POS = new THREE.Vector3(-2.8, 1.5, 3.9);
 
 export class FishingSceneManager {
   private eventBus: EventBus;
@@ -53,7 +53,7 @@ export class FishingSceneManager {
     // Position fisherman on island edge
     this.fisherman.group.position.copy(FISHERMAN_POS);
     // Face outward (toward +X)
-    this.fisherman.group.rotation.y = -0.8;
+    this.fisherman.group.rotation.y = 0.65;
 
     // Add to scene
     scene.add(this.bobber.group);
@@ -96,10 +96,11 @@ export class FishingSceneManager {
 
       // Cast released — animate flight, splash on landing
       this.eventBus.on(GameEvents.FISHING_CAST, (p) => {
+        this.fisherman.playCast();
         const power = p.power || 0.3;
         const target = CAST_TARGET.clone();
-        target.x += power * 3;
-        target.z -= power * 1.5;
+        target.x += power * 1.4;
+        target.z += power * 0.2;
         this.bobber.startFlight(this.fisherman.getWorldRodTip(), target);
         this.line.hide();
         // Splash will trigger when bobber lands (via update check)
@@ -182,6 +183,7 @@ export class FishingSceneManager {
 
       // Line break
       this.eventBus.on(GameEvents.FISHING_LINE_BREAK, () => {
+        this.fisherman.playLineBreak();
         const pos = this.bobber.getWorldPosition();
         this.splash.burst(pos, 20, 0xff8844, 2, 3);
         this._hideFishModel();
@@ -210,11 +212,12 @@ export class FishingSceneManager {
   private _spawnFishModel(fish: SpiritFish): void {
     this._hideFishModel();
     this.fishModel = new VoxelFishModel(fish);
-    this.fishModelGroup = this.fishModel.group;
+    this.fishModelGroup = new THREE.Group();
+    this.fishModelGroup.add(this.fishModel.group);
 
     // Position underwater near bobber
     const pos = CAST_TARGET.clone();
-    pos.y -= 0.8; // closer to surface, more visible
+    pos.y += 0.2;
     pos.x += (Math.random() - 0.5) * 2;
     pos.z += (Math.random() - 0.5) * 2;
     // Scale up for visibility
@@ -242,7 +245,7 @@ export class FishingSceneManager {
       this.fishModelGroup.getWorldPosition(pos);
       return pos;
     }
-    return CAST_TARGET.clone().add(new THREE.Vector3(0, -1.5, 0));
+    return CAST_TARGET.clone();
   }
 
   // ── Per-frame update ──
@@ -279,7 +282,7 @@ export class FishingSceneManager {
     // Fish thrash during reel — absolute positioning, no drift
     if (this.fishVisible && this.fishModelGroup) {
       const basePos = CAST_TARGET.clone();
-      basePos.y -= 1.5;
+      basePos.y += 0.2;
       const thrash = Math.sin(this.fishThrashPhase * 8) * 0.4;
       const sway = Math.cos(this.fishThrashPhase * 5) * 0.3;
       this.fishModelGroup.position.set(

@@ -68,9 +68,19 @@ Soul Sanctuary 采用独特的 **400×300 内部渲染 → CSS 像素化放大**
 | **渲染分辨率** | 400×300（内部），通过 `image-rendering: pixelated` CSS 放大 |
 | **几何体** | 纯 BoxGeometry 体素，所有建筑/树木/鱼模型由方块拼成 |
 | **材质** | `MeshLambertMaterial` + `flatShading: true`，无平滑法线 |
-| **灯光** | 三灯系统：AmbientLight + HemisphereLight（地面反弹暖光）+ DirectionalLight |
-| **粒子** | 12 种粒子类型（樱花瓣/萤火虫/霓虹雨/极光等），每场景 80 个 |
+| **光照** | 五灯结构：低环境光 + 暖/冷主光 + 轮廓光 + 水面点光 + 半球反弹；阴影收紧到岛体 |
+| **后期** | `PostFX`：曝光/对比/饱和、暖冷分离、亮部泛光、alpha 遮罩暗角、4×4 Bayer 抖动（透明像素不变） |
+| **配色** | 12 个地点各有一套 **6 色脚本**（key/shadow/base/accent/glow/veil），写入 `location-data.ts` |
+| **浮岛** | 7 层手工台地（草皮 0.25 网格 + 土坡 + 3 层岩层 + 水下岛尖），InstancedMesh 地形与水面 |
+| **水面** | 5 档深度色带 + 外缘渐隐、连续阶梯泡沫环带、双层短弧波纹、地标色倒影、实例化闪烁 |
+| **远景** | 透明窗口不使用地平线剪影：改为微型浮岛 + 半透明云 + 岛底薄雾，环绕时自然提供景深 |
+| **粒子** | 12 种粒子类型（樱花瓣/萤火虫/霓虹雨/极光等），每场景 80+ |
 | **窗口** | 透明背景，浮岛悬于桌面，frameless 自定义标题栏 |
+
+### 参考作品（只借方法，不取素材）
+
+[同款游戏美术拆解](docs/art-reference-analysis.md) 与 [美术方向 v2](docs/art-direction-v2.md) 记录了从 [WEBFISHING](https://lamedeveloper.itch.io/webfishing)、[Tiny Glade](https://store.steampowered.com/app/2198150/Tiny_Glade/)、[Cast n Chill](https://store.steampowered.com/app/3483740/Cast_n_Chill/)、[Rusty's Retirement](https://store.steampowered.com/app/2666510/Rustys_Retirement/)、[Dorfromantik](https://store.steampowered.com/app/1455840/Dorfromantik/) 等作品借鉴的构图、光色、水面与 UI 层级方法。所有模型、配色、界面仍为 100% 原创程序化生成。
+
 
 ### 地面永远比物体亮
 
@@ -360,6 +370,9 @@ SoulSanctuary/
 | [`SDD.md`](docs/SDD.md) | 软件设计文档（Software Design Document）|
 | [`architecture.md`](docs/architecture.md) | 架构设计记录（Architecture Design Record）|
 | [`art-review.md`](docs/art-review.md) | 12 场景美术审核 |
+| [`art-direction-v2.md`](docs/art-direction-v2.md) | 第二轮美术方向与硬性规范（微光圣地） |
+| [`art-reference-analysis.md`](docs/art-reference-analysis.md) | 同类游戏美术拆解（10 款，含引用） |
+| [`art-upgrade-v2.md`](docs/art-upgrade-v2.md) | 第二轮美术升级交付记录 |
 | [`design-audit.md`](docs/design-audit.md) | 游戏设计深度审核（8 维 16 项）|
 | [`camp-audit.md`](docs/camp-audit.md) | 营地系统设计审核 |
 | [`market-research.md`](docs/market-research.md) | 市场调研与竞品分析 |

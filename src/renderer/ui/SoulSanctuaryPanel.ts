@@ -9,7 +9,7 @@ import { SOUL_STORIES } from '../data/soul-stories';
 import { GameEvents } from '../../shared/events';
 import { FishRarity } from '../../shared/enums';
 import { i18n } from '../i18n/I18n';
-import { THEME } from './theme';
+import { svgIcon } from './icons';
 
 export class SoulSanctuaryPanel {
   private eventBus: EventBus;
@@ -26,17 +26,8 @@ export class SoulSanctuaryPanel {
 
     this.container = document.createElement('div');
     this.container.id = 'soul-sanctuary-panel';
-    this.container.style.cssText = `
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      width: 460px; max-width: 92vw; max-height: 85vh;
-      background: ${THEME.panel.bg};
-      border: ${THEME.panel.border};
-      border-radius: ${THEME.panel.radius};
-      z-index: 310; display: none; pointer-events: all;
-      font-family: ${THEME.panel.font};
-      overflow-y: auto;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-    `;
+    this.container.className = 'collection-panel';
+    this.container.style.display = 'none';
 
     this.container.addEventListener('click', (e) => {
       if (e.target === this.container) this.hide();
@@ -73,7 +64,7 @@ export class SoulSanctuaryPanel {
 
   show(): void {
     this.visible = true;
-    this.container.style.display = 'block';
+    this.container.style.display = 'flex';
     this._build();
   }
 
@@ -87,44 +78,35 @@ export class SoulSanctuaryPanel {
   private _build(): void {
     this.container.innerHTML = '';
 
-    // Header
     const header = document.createElement('div');
-    header.style.cssText = `
-      font-size: 11px; color: ${THEME.text.secondary};
-      letter-spacing: 2px; margin-bottom: 12px;
-      border-bottom: 1px solid ${THEME.border.subtle};
-      padding: 12px 16px 8px;
+    header.className = 'soul-head';
+    const title = document.createElement('div');
+    title.className = 'soul-title';
+    title.innerHTML = `
+      <span class="soul-title__icon">${svgIcon('soul', 15)}</span>
+      <span class="soul-title__text">${i18n.t('soul.title')}</span>
     `;
-    header.textContent = i18n.lang === 'zh' ? '灵魂圣地' : 'SOUL SANCTUARY';
-    this.container.appendChild(header);
+    header.appendChild(title);
 
-    // Close button
     const closeBtn = document.createElement('div');
-    closeBtn.style.cssText = `
-      position: absolute; top: 8px; right: 12px;
-      color: ${THEME.text.secondary}; font-size: 16px;
-      cursor: pointer; pointer-events: all;
-    `;
-    closeBtn.textContent = '×';
-    closeBtn.addEventListener('click', () => this.hide());
-    this.container.appendChild(closeBtn);
+    closeBtn.className = 'pedia-close';
+    closeBtn.setAttribute('role', 'button');
+    closeBtn.setAttribute('aria-label', i18n.t('ui.close'));
+    closeBtn.tabIndex = 0;
+    closeBtn.innerHTML = svgIcon('close', 12);
+    const close = () => this.hide();
+    closeBtn.addEventListener('click', close);
+    closeBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        close();
+      }
+    });
+    header.appendChild(closeBtn);
+    this.container.appendChild(header);
 
     const mythicFish = FISH_DATABASE.filter((f) => f.rarity === FishRarity.Mythic);
     const collectedCount = mythicFish.filter((f) => this.gsm.soulCollection[f.id]).length;
-
-    // Soul progress
-    const soulProgress = document.createElement('div');
-    soulProgress.style.cssText = `
-      font-size: 9px; color: ${THEME.accent.pink};
-      padding: 0 16px 4px;
-    `;
-    soulProgress.textContent =
-      i18n.lang === 'zh'
-        ? `已收集灵魂: ${collectedCount}/${mythicFish.length}`
-        : `Souls collected: ${collectedCount}/${mythicFish.length}`;
-    this.container.appendChild(soulProgress);
-
-    // Fragment progress
     const totalFragments = mythicFish.reduce((sum, fish) => {
       const story = SOUL_STORIES.find((s) => s.fishId === fish.id);
       return sum + (story?.fragments.length ?? 0);
@@ -133,23 +115,39 @@ export class SoulSanctuaryPanel {
       (sum, entry) => sum + (entry.storyProgress ?? 0),
       0,
     );
-    const fragmentProgress = document.createElement('div');
-    fragmentProgress.style.cssText = `
-      font-size: 8px; color: ${THEME.text.muted};
-      padding: 0 16px 12px;
-    `;
-    fragmentProgress.textContent =
-      i18n.lang === 'zh'
-        ? `记忆碎片: ${unlockedFragments}/${totalFragments}`
-        : `Memory fragments: ${unlockedFragments}/${totalFragments}`;
-    this.container.appendChild(fragmentProgress);
 
-    // Grid of soul cards
+    const stats = document.createElement('div');
+    stats.className = 'soul-stats';
+    const addStat = (icon: 'soul' | 'sparkle', text: string, ratio: number): void => {
+      const stat = document.createElement('div');
+      stat.className = 'soul-stat';
+      stat.innerHTML = `
+        <span class="soul-stat__icon">${svgIcon(icon, 13)}</span>
+        <div class="soul-stat__main">
+          <div class="soul-stat__value"></div>
+          <span class="ss-bar"><i></i></span>
+        </div>
+      `;
+      const value = stat.querySelector('.soul-stat__value');
+      if (value) value.textContent = text;
+      const bar = stat.querySelector<HTMLElement>('.ss-bar > i');
+      if (bar) bar.style.transform = `scaleX(${ratio})`;
+      stats.appendChild(stat);
+    };
+    addStat(
+      'soul',
+      i18n.t('soul.collected', { '0': collectedCount, '1': mythicFish.length }),
+      mythicFish.length ? collectedCount / mythicFish.length : 0,
+    );
+    addStat(
+      'sparkle',
+      i18n.t('soul.fragments', { '0': unlockedFragments, '1': totalFragments }),
+      totalFragments ? unlockedFragments / totalFragments : 0,
+    );
+    this.container.appendChild(stats);
+
     const grid = document.createElement('div');
-    grid.style.cssText = `
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 8px; padding: 0 16px 16px;
-    `;
+    grid.className = 'soul-grid';
 
     for (const fish of mythicFish) {
       const soul = this.gsm.soulCollection[fish.id];
@@ -159,134 +157,107 @@ export class SoulSanctuaryPanel {
       const loc = LOCATIONS.find((l) => l.id === fish.location);
 
       const card = document.createElement('div');
-      card.style.cssText = `
-        background: ${soul ? 'rgba(255,68,204,0.08)' : 'rgba(255,255,255,0.03)'};
-        border: 1px solid ${isExpanded ? 'rgba(255,215,0,0.5)' : soul ? 'rgba(255,68,204,0.3)' : 'rgba(255,255,255,0.06)'};
-        border-radius: ${THEME.radius.md}; padding: 8px;
-        min-height: ${isExpanded ? 'auto' : '90px'};
-        cursor: ${soul ? 'pointer' : 'default'};
-        pointer-events: ${soul ? 'all' : 'none'};
-        transition: background 0.15s, border-color 0.15s;
-        grid-column: ${isExpanded ? '1 / -1' : 'auto'};
-      `;
+      card.className = 'soul-card';
+      card.dataset.collected = String(!!soul);
+      card.dataset.expanded = String(isExpanded);
 
       if (soul) {
         card.addEventListener('click', () => {
-          this.expandedFishId = isExpanded ? null : fish.id;
-          this.unreadFishIds.delete(fish.id);
+          if (isExpanded) {
+            this.expandedFishId = null;
+          } else {
+            this.expandedFishId = fish.id;
+            this.unreadFishIds.delete(fish.id);
+          }
           this._build();
         });
       }
 
-      // Header row: name + NEW badge
       const nameRow = document.createElement('div');
-      nameRow.style.cssText = `
-        display: flex; justify-content: space-between; align-items: center;
-        margin-bottom: 4px;
-      `;
+      nameRow.className = 'soul-card__head';
+      const cardIcon = document.createElement('span');
+      cardIcon.className = 'soul-card__icon';
+      cardIcon.innerHTML = svgIcon(soul ? 'soul' : 'lock', 11);
+      nameRow.appendChild(cardIcon);
 
       const name = document.createElement('div');
-      name.style.cssText = `
-        font-size: 10px; color: ${soul ? THEME.accent.gold : THEME.text.dark};
-        font-weight: bold;
-      `;
-      name.textContent = soul ? (i18n.lang === 'zh' ? fish.name.zh : fish.name.en) : '???';
+      name.className = 'soul-card__name';
+      const nameText = soul ? (i18n.lang === 'zh' ? fish.name.zh : fish.name.en) : '???';
+      name.textContent = nameText;
+      name.title = nameText;
       nameRow.appendChild(name);
 
       if (isUnread) {
         const badge = document.createElement('span');
-        badge.style.cssText = `
-          font-size: 7px; color: ${THEME.accent.green}; background: rgba(68,221,136,0.12);
-          padding: 1px 4px; border-radius: ${THEME.radius.sm};
-        `;
-        badge.textContent = 'NEW';
+        badge.className = 'soul-card__badge';
+        badge.textContent = i18n.t('soul.new');
         nameRow.appendChild(badge);
       }
       card.appendChild(nameRow);
 
       const locName = document.createElement('div');
-      locName.style.cssText = `
-        font-size: 8px; color: ${soul ? 'rgba(255,255,255,0.5)' : '#444'};
-        margin-bottom: 6px;
-      `;
-      locName.textContent = soul
+      locName.className = 'soul-card__loc';
+      locName.innerHTML = svgIcon(soul ? 'pin' : 'lock', 9);
+      const locText = document.createElement('span');
+      locText.textContent = soul
         ? i18n.lang === 'zh'
           ? (loc?.country ?? '')
           : (loc?.name.en ?? '')
-        : i18n.lang === 'zh'
-          ? '未觉醒'
-          : 'Dormant';
+        : i18n.t('soul.dormant');
+      locName.appendChild(locText);
       card.appendChild(locName);
 
       if (isExpanded && soul && story) {
-        // Story reader
+        const storyReader = document.createElement('div');
+        storyReader.className = 'soul-story';
+
         const storyTitle = document.createElement('div');
-        storyTitle.style.cssText = `
-          font-size: 9px; color: ${THEME.accent.gold};
-          margin: 8px 0 6px; letter-spacing: 1px;
-          border-bottom: 1px solid rgba(255,215,0,0.15);
-          padding-bottom: 4px;
-        `;
-        storyTitle.textContent = i18n.lang === 'zh' ? story.title.zh : story.title.en;
-        card.appendChild(storyTitle);
+        storyTitle.className = 'soul-story__title';
+        storyTitle.innerHTML = svgIcon('book', 10);
+        const storyTitleText = document.createElement('span');
+        storyTitleText.textContent = i18n.lang === 'zh' ? story.title.zh : story.title.en;
+        storyTitle.appendChild(storyTitleText);
+        storyReader.appendChild(storyTitle);
 
         const progress = document.createElement('div');
-        progress.style.cssText = `
-          font-size: 7px; color: rgba(255,255,255,0.35);
-          margin-bottom: 8px;
-        `;
-        progress.textContent =
-          i18n.lang === 'zh'
-            ? `解锁进度: ${soul.storyProgress}/${story.fragments.length}`
-            : `Unlocked: ${soul.storyProgress}/${story.fragments.length}`;
-        card.appendChild(progress);
+        progress.className = 'soul-story__progress';
+        progress.textContent = i18n.t('soul.unlocked', {
+          '0': soul.storyProgress,
+          '1': story.fragments.length,
+        });
+        storyReader.appendChild(progress);
 
         story.fragments.forEach((fragment, idx) => {
           const unlocked = idx < soul.storyProgress;
           const para = document.createElement('div');
-          para.style.cssText = `
-            font-size: 7px; line-height: 1.5;
-            color: ${unlocked ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.15)'};
-            font-style: ${unlocked ? 'italic' : 'normal'};
-            margin-bottom: 8px;
-            padding-left: 8px;
-            border-left: 2px solid ${unlocked ? 'rgba(255,215,0,0.4)' : 'rgba(255,255,255,0.06)'};
-          `;
+          para.className = 'soul-fragment';
+          para.dataset.locked = String(!unlocked);
           para.textContent = unlocked ? (i18n.lang === 'zh' ? fragment.zh : fragment.en) : '……';
-          card.appendChild(para);
+          storyReader.appendChild(para);
         });
 
         const hint = document.createElement('div');
-        hint.style.cssText = `
-          font-size: 6px; color: rgba(255,255,255,0.25);
-          margin-top: 6px;
-        `;
+        hint.className = 'soul-hint';
         hint.textContent =
           soul.storyProgress >= story.fragments.length
-            ? i18n.lang === 'zh'
-              ? '故事已完整'
-              : 'Story complete'
-            : i18n.lang === 'zh'
-              ? `再次捕获 ${fish.name.zh} 可解锁下一段`
-              : `Catch ${fish.name.en} again to unlock the next fragment`;
-        card.appendChild(hint);
+            ? i18n.t('soul.storyComplete')
+            : i18n.t('soul.catchAgain', {
+                '0': i18n.lang === 'zh' ? fish.name.zh : fish.name.en,
+              });
+        storyReader.appendChild(hint);
+        card.appendChild(storyReader);
       } else {
         const memory = document.createElement('div');
-        memory.style.cssText = `
-          font-size: 7px; line-height: 1.4;
-          color: ${soul ? 'rgba(255,255,255,0.55)' : '#333'};
-          font-style: italic;
-        `;
-        memory.textContent = soul && fish.mythologyNote ? fish.mythologyNote : '...';
+        memory.className = 'soul-card__memory';
+        const memoryText = soul && fish.mythologyNote ? fish.mythologyNote : '...';
+        memory.textContent = memoryText;
+        memory.title = memoryText;
         card.appendChild(memory);
       }
 
       if (soul && !isExpanded) {
         const date = document.createElement('div');
-        date.style.cssText = `
-          font-size: 6px; color: rgba(255,255,255,0.3);
-          margin-top: 6px;
-        `;
+        date.className = 'soul-card__date';
         date.textContent = new Date(soul.caughtAt).toLocaleDateString();
         card.appendChild(date);
       }

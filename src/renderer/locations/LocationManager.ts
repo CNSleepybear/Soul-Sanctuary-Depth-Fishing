@@ -103,7 +103,9 @@ export class LocationManager {
 
   update(dt: number): void {
     if (this.current) {
-      this.current.update(dt, performance.now() / 1000);
+      const time = performance.now() / 1000;
+      this.current.update(dt, time);
+      this.current.updateScenery(time);
     }
   }
 

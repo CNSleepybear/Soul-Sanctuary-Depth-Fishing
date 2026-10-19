@@ -179,6 +179,19 @@ async function initApp(): Promise<void> {
     }
   });
 
+  // Art review harness: read-only probe (draw calls, triangles, active scene).
+  (window as unknown as { __soul?: unknown }).__soul = {
+    stats: () => ({
+      ...renderer.getStats(),
+      locationId: locationManager.currentLocationId,
+      camera: {
+        x: renderer.getCamera().position.x,
+        y: renderer.getCamera().position.y,
+        z: renderer.getCamera().position.z,
+      },
+    }),
+  };
+
   // AUDIO: Brand logo + ambient on startup
   setTimeout(() => {
     audio.playBrandLogo();

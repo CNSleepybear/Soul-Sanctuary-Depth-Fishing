@@ -1,41 +1,67 @@
 // ===== src/renderer/roguelike/ui/run-ui-helpers.ts =====
-// Shared DOM helpers for RunUI sub-panels.
+// Shared DOM helpers for the run sub-panels (camp, pickers, result).
+// Presentation lives in main.css; helpers only build structure.
 
-import { THEME } from '../../ui/theme';
+import { svgIcon } from '../../ui/icons';
+import type { IconName } from '../../ui/icons';
 
-/** Create a div with inline style and optional HTML. */
-export function d(style: string, html?: string): HTMLDivElement {
+/** Create a div with optional inline style and optional HTML payload. */
+export function d(style = '', html?: string): HTMLDivElement {
   const el = document.createElement('div');
-  el.style.cssText = style;
+  if (style) el.style.cssText = style;
   if (html) el.innerHTML = html;
   return el;
 }
 
-/** Floating tooltip used by charm picker for full details. */
+/** Create a span/div with a class + HTML. */
+export function el(
+  tag: 'div' | 'span',
+  className: string,
+  html?: string,
+): HTMLDivElement | HTMLSpanElement {
+  const node = document.createElement(tag);
+  node.className = className;
+  if (html) node.innerHTML = html;
+  return node;
+}
+
+/** Icon + label markup helper. */
+export function iconLabel(icon: IconName, text: string, size = 11): string {
+  return `${svgIcon(icon, size)}<span>${text}</span>`;
+}
+
+/** Section header with leading icon and trailing hairline. */
+export function sectionTitle(icon: IconName, text: string, count?: string): HTMLDivElement {
+  const row = d();
+  row.className = 'ss-section-title';
+  row.innerHTML = svgIcon(icon, 11) + `<span>${text}</span>`;
+  if (count) {
+    const badge = document.createElement('span');
+    badge.className = 'ss-section-count';
+    badge.textContent = count;
+    row.appendChild(badge);
+  }
+  return row;
+}
+
+/** Floating tooltip used by the charm/bait pickers for full details. */
 export const tooltip = (() => {
-  let el: HTMLDivElement | null = null;
-  const ensure = () => {
-    if (!el) {
-      el = document.createElement('div');
-      el.style.cssText = `
-        position: fixed; z-index: 300; pointer-events: none;
-        max-width: 220px; padding: 8px 10px;
-        background: ${THEME.panel.bg};
-        border: ${THEME.panel.border};
-        border-radius: ${THEME.panel.radius}; color: ${THEME.text.primary};
-        font-size: 10px; line-height: 1.45;
-        box-shadow: 0 6px 24px rgba(0,0,0,0.5);
-        opacity: 0; transition: opacity 0.12s;
-      `;
-      document.body.appendChild(el);
+  let node: HTMLDivElement | null = null;
+  const ensure = (): HTMLDivElement => {
+    if (!node) {
+      node = document.createElement('div');
+      node.className = 'ss-tooltip';
+      document.body.appendChild(node);
     }
-    return el;
+    return node;
   };
   return {
     show(html: string, anchor: HTMLElement) {
       const t = ensure();
       t.innerHTML = html;
-      t.style.display = 'block';
+      t.style.left = '0px';
+      t.style.top = '0px';
+      t.style.opacity = '1';
       const rect = anchor.getBoundingClientRect();
       const tRect = t.getBoundingClientRect();
       let left = rect.left + rect.width / 2 - tRect.width / 2;
@@ -43,48 +69,31 @@ export const tooltip = (() => {
       if (left < 8) left = 8;
       if (left + tRect.width > window.innerWidth - 8) left = window.innerWidth - tRect.width - 8;
       if (top < 8) top = rect.bottom + 8;
+      if (top + tRect.height > window.innerHeight - 8) {
+        top = Math.max(8, window.innerHeight - tRect.height - 8);
+      }
       t.style.left = `${left}px`;
       t.style.top = `${top}px`;
-      t.style.opacity = '1';
     },
     hide() {
-      if (el) el.style.opacity = '0';
+      if (node) node.style.opacity = '0';
     },
     destroy() {
-      if (el && el.parentElement) el.parentElement.removeChild(el);
-      el = null;
+      if (node && node.parentElement) node.parentElement.removeChild(node);
+      node = null;
     },
   };
 })();
 
-/** Uniform charm card sizing. */
-export const CARD_STYLE = `
-  padding: 6px;
-  background: rgba(255,255,255,0.06);
-  border: ${THEME.panel.border};
-  border-radius: ${THEME.panel.radius}; cursor: pointer; text-align: center;
-  color: ${THEME.text.primary};
-  display: flex; flex-direction: column; align-items: center;
-  height: 102px;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
-`;
-
-/** Show a transient toast message. */
-export function toast(msg: string): void {
-  const t = d(
-    `
-    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
-    padding: 6px 16px; background: rgba(0,0,0,0.9);
-    border: ${THEME.panel.border};
-    color: ${THEME.text.white}; font-size: 10px; font-weight: bold; z-index: 260;
-    pointer-events: none; font-family: ${THEME.panel.font};
-    border-radius: ${THEME.radius.md}; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-  `,
-    msg,
-  );
-  document.body.appendChild(t);
-  setTimeout(() => {
-    t.style.opacity = '0';
-    setTimeout(() => t.remove(), 400);
+/** Transient toast message (single line, bottom centre). */
+export function toast(msg: string, icon: IconName = 'sparkle'): void {
+  const node = d();
+  node.className = 'ss-toast';
+  node.innerHTML = `${svgIcon(icon, 12)}<span>${msg}</span>`;
+  document.body.appendChild(node);
+  window.setTimeout(() => {
+    node.style.opacity = '0';
+    node.style.transition = 'opacity 220ms cubic-bezier(0.22,0.61,0.36,1)';
+    window.setTimeout(() => node.remove(), 260);
   }, 2000);
 }

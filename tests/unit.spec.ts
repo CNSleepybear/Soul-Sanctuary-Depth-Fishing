@@ -13,6 +13,24 @@ import { ALL_CHARMS } from '../src/renderer/roguelike/charm-data';
 import { ALL_RELICS } from '../src/renderer/roguelike/relic-data';
 import { FISH_DATABASE, FISH_BY_ID, FISH_BY_LOCATION } from '../src/renderer/data/fish-database';
 import { VoxelFishModel } from '../src/renderer/rendering/VoxelFishModel';
+import { FloatingIsland } from '../src/renderer/rendering/FloatingIsland';
+import { SanctuaryWater } from '../src/renderer/rendering/SanctuaryWater';
+import { SanctuaryDetails } from '../src/renderer/rendering/SanctuaryDetails';
+import { ParticleSystem } from '../src/renderer/rendering/ParticleSystem';
+import { FishingLine } from '../src/renderer/rendering/FishingLine';
+import { Fisherman } from '../src/renderer/rendering/Fisherman';
+import { Bobber } from '../src/renderer/rendering/Bobber';
+import { DEFAULT_GRADE, setGrade, getGrade } from '../src/renderer/rendering/PostFX';
+import {
+  buildInstancedVoxels,
+  createRng,
+  mixHex,
+  shade,
+  snap,
+  snapUp,
+} from '../src/renderer/rendering/ArtKit';
+import { LOCATIONS } from '../src/renderer/data/location-data';
+import { LocationManager } from '../src/renderer/locations/LocationManager';
 import { BALANCE, BAITS } from '../src/shared/constants';
 import { GameEvents } from '../src/shared/events';
 import { Logger, LogLevel } from '../src/shared/logger';
@@ -921,6 +939,22 @@ test.describe('GameStateManager Import/Export', () => {
 // ═══════════════════════════════════════════════════
 
 test.describe('VoxelFishModel Cache', () => {
+  test('legendary breathing preserves voxel proportions across frames', () => {
+    const fish = FISH_DATABASE.find((entry) => entry.rarity === 'legendary')!;
+    const model = new VoxelFishModel(fish);
+    const original = model.group.children.map((child) => child.scale.clone());
+    for (const time of [0, 0.5, 1, 10, 100]) {
+      model.update(time);
+      model.group.children.forEach((child, index) => {
+        const ratio = child.scale.clone().divide(original[index]);
+        expect(ratio.x).toBeCloseTo(ratio.y, 5);
+        expect(ratio.y).toBeCloseTo(ratio.z, 5);
+        expect(ratio.x).toBeGreaterThanOrEqual(1);
+        expect(ratio.x).toBeLessThan(1.06);
+      });
+    }
+    model.dispose();
+  });
   test('same fish shares geometry and materials across instances', () => {
     const fish = FISH_DATABASE[0];
     const a = new VoxelFishModel(fish);
@@ -968,6 +1002,273 @@ test.describe('VoxelFishModel Cache', () => {
     expect(a.group).not.toBe(b.group);
     a.dispose();
     b.dispose();
+  });
+});
+
+test.describe('Sanctuary visual lifecycle', () => {
+  test('all twelve locations animate ambience and release their scene objects', () => {
+    const scene = new THREE.Scene();
+    const locations = new LocationManager(scene);
+    for (const id of [
+      'japan',
+      'china',
+      'usa',
+      'uk',
+      'france',
+      'germany',
+      'italy',
+      'denmark',
+      'iceland',
+      'thailand',
+      'egypt',
+      'greece',
+    ]) {
+      locations.loadLocation(id);
+      expect(scene.children.filter((child) => child instanceof THREE.Light)).toHaveLength(5);
+      let atmosphereFrames = 0;
+      Object.defineProperty(locations.currentLocation!, 'updateAtmosphere', {
+        value: () => {
+          atmosphereFrames++;
+        },
+      });
+      locations.update(1 / 60);
+      expect(atmosphereFrames).toBe(1);
+    }
+    locations.destroy();
+    expect(scene.children).toHaveLength(0);
+  });
+});
+
+// ═══════════════════════════════════════════════════
+// Art direction v2 foundations
+// ═══════════════════════════════════════════════════
+
+test.describe('Art direction v2', () => {
+  test('every sanctuary ships a complete 6-colour script and sane grade', () => {
+    for (const location of LOCATIONS) {
+      const theme = location.theme;
+      expect(theme, location.id).toBeTruthy();
+      const art = theme!.art;
+      expect(art, `${location.id} theme.art`).toBeTruthy();
+      for (const slot of ['key', 'shadow', 'accent', 'glow', 'veil'] as const) {
+        expect(typeof art![slot], `${location.id}.${slot}`).toBe('number');
+      }
+      const grade = art!.grade ?? {};
+      expect(grade.saturation ?? 1, location.id).toBeGreaterThan(0.8);
+      expect(grade.saturation ?? 1, location.id).toBeLessThan(1.3);
+      expect(grade.bloom ?? 0.5, location.id).toBeGreaterThanOrEqual(0);
+      expect(grade.bloom ?? 0.5, location.id).toBeLessThanOrEqual(1.2);
+      expect(grade.vignette ?? 0.13, location.id).toBeLessThanOrEqual(0.35);
+    }
+  });
+
+  test('post grade merges overrides without leaking between locations', () => {
+    setGrade({ bloom: 0.91, saturation: 1.2 });
+    expect(getGrade().bloom).toBe(0.91);
+    expect(getGrade().saturation).toBe(1.2);
+    expect(getGrade().exposure).toBe(DEFAULT_GRADE.exposure);
+    setGrade();
+    expect(getGrade().bloom).toBe(DEFAULT_GRADE.bloom);
+    expect(getGrade().saturation).toBe(DEFAULT_GRADE.saturation);
+  });
+
+  test('art kit helpers keep the 0.25 grid coherent', () => {
+    expect(snap(0.37)).toBe(0.25);
+    expect(snap(0.64)).toBe(0.75);
+    expect(snapUp(0.01)).toBe(0.25);
+    const mid = mixHex(0x000000, 0xffffff, 0.5);
+    expect((mid >> 16) & 0xff).toBe((mid >> 8) & 0xff);
+    expect((mid >> 8) & 0xff).toBe(mid & 0xff);
+    expect(mid & 0xff).toBeGreaterThan(0x80);
+    expect(shade(0x808080, 1)).toBe(0x808080);
+    const rngA = createRng('sanctuary');
+    const rngB = createRng('sanctuary');
+    for (let i = 0; i < 12; i++) expect(rngA.next()).toBe(rngB.next());
+  });
+
+  test('instanced voxel batches create one draw call worth of mesh', () => {
+    const mesh = buildInstancedVoxels([
+      { x: 0, y: 0, z: 0, color: 0xff0000 },
+      { x: 1, y: 0, z: 0, color: 0x00ff00 },
+      { x: 2, y: 0, z: 0, color: 0x0000ff },
+    ]);
+    expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+    expect(mesh.count).toBe(3);
+    expect(mesh.instanceColor).toBeTruthy();
+    mesh.geometry.dispose();
+    (mesh.material as THREE.Material).dispose();
+  });
+
+  test('particle system uses one dynamic batch and preserves motion', () => {
+    const system = new ParticleSystem({
+      count: 90,
+      type: 'float',
+      color: 0xffffff,
+      spreadRadius: 3,
+      heightRange: 2,
+      driftType: 'sine',
+    });
+    const group = system.getGroup();
+    expect(group.children).toHaveLength(1);
+    const mesh = group.children[0] as THREE.InstancedMesh;
+    expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+    expect(mesh.count).toBe(90);
+    expect(mesh.instanceMatrix.usage).toBe(THREE.DynamicDrawUsage);
+    const before = new THREE.Matrix4();
+    const after = new THREE.Matrix4();
+    mesh.getMatrixAt(0, before);
+    system.update(1 / 60, 0.5);
+    mesh.getMatrixAt(0, after);
+    expect(after.equals(before)).toBe(false);
+    system.dispose();
+    expect(group.children).toHaveLength(0);
+  });
+
+  test('fishing line keeps twelve curved segments in one dynamic batch', () => {
+    const line = new FishingLine();
+    const mesh = line.group.children[0] as THREE.InstancedMesh;
+    expect(mesh).toBeInstanceOf(THREE.InstancedMesh);
+    expect(mesh.count).toBe(12);
+    expect(mesh.instanceMatrix.usage).toBe(THREE.DynamicDrawUsage);
+    line.setRodTip(new THREE.Vector3(0, 1, 0));
+    line.setTarget(new THREE.Vector3(2, -1, 4));
+    line.setTension(25);
+    line.show();
+    line.update();
+    expect(mesh.visible).toBe(true);
+    const first = new THREE.Matrix4();
+    const last = new THREE.Matrix4();
+    mesh.getMatrixAt(0, first);
+    mesh.getMatrixAt(11, last);
+    expect(last.equals(first)).toBe(false);
+    line.setTension(100);
+    line.update();
+    expect((mesh.material as THREE.MeshBasicMaterial).color.getHex()).toBe(0xff6b5e);
+    line.setTarget(new THREE.Vector3(0, 1, 0));
+    line.update();
+    expect(mesh.visible).toBe(false);
+    line.dispose();
+    expect(line.group.children).toHaveLength(0);
+  });
+
+  test('fisherman batches rigid voxels without freezing rod animation', () => {
+    const fisherman = new Fisherman();
+    const meshes: THREE.Mesh[] = [];
+    fisherman.group.traverse((child) => {
+      if (child instanceof THREE.Mesh) meshes.push(child);
+    });
+    expect(meshes).toHaveLength(8);
+    expect(meshes.every((mesh) => mesh instanceof THREE.InstancedMesh)).toBe(true);
+    const before = fisherman.getWorldRodTip().clone();
+    fisherman.setTension(100);
+    for (let frame = 1; frame <= 12; frame++) fisherman.update(frame / 60);
+    const after = fisherman.getWorldRodTip().clone();
+    expect(after.distanceTo(before)).toBeGreaterThan(0.001);
+    fisherman.playCast();
+    fisherman.update(0.3);
+    fisherman.playLineBreak();
+    fisherman.update(0.5);
+    fisherman.dispose();
+    expect(fisherman.group.children).toHaveLength(0);
+  });
+
+  test('bobber keeps the antenna and state animation after batching', () => {
+    const bobber = new Bobber();
+    bobber.showIdle(new THREE.Vector3());
+    const meshes: THREE.Mesh[] = [];
+    bobber.group.traverse((child) => {
+      if (child instanceof THREE.Mesh) meshes.push(child);
+    });
+    expect(meshes).toHaveLength(6);
+    expect(meshes.filter((mesh) => mesh instanceof THREE.InstancedMesh)).toHaveLength(5);
+    const antenna = meshes.find((mesh) => !(mesh instanceof THREE.InstancedMesh));
+    expect(antenna).toBeDefined();
+    bobber.update(0.1);
+    expect(antenna!.rotation.z).not.toBe(0);
+    bobber.startFlight(new THREE.Vector3(0, 1, 0), new THREE.Vector3(1, -1, 2));
+    for (let frame = 0; frame < 20; frame++) bobber.update(0.1);
+    expect(bobber.state).toBe('waiting');
+    bobber.startSink();
+    for (let frame = 0; frame < 10; frame++) bobber.update(0.1);
+    expect(bobber.group.visible).toBe(false);
+    bobber.resurface(new THREE.Vector3(1, -1, 2));
+    for (let frame = 0; frame < 10; frame++) bobber.update(0.1);
+    expect(bobber.state).toBe('waiting');
+    bobber.dispose();
+    expect(bobber.group.children).toHaveLength(0);
+  });
+
+  test('floating island combines strata into three shadow-aware batches', () => {
+    const island = new FloatingIsland(undefined, 'test-island');
+    expect(island.surfaceY).toBe(1.5);
+    expect(island.radius).toBeGreaterThan(5);
+    const instanced = island.group.children.filter(
+      (child): child is THREE.InstancedMesh => child instanceof THREE.InstancedMesh,
+    );
+    expect(instanced).toHaveLength(3);
+    expect(instanced.reduce((sum, mesh) => sum + mesh.count, 0)).toBeGreaterThan(3000);
+    expect(instanced.filter((mesh) => mesh.castShadow)).toHaveLength(1);
+    expect(instanced.filter((mesh) => mesh.receiveShadow)).toHaveLength(2);
+    expect(instanced.every((mesh) => mesh.instanceColor)).toBe(true);
+    island.update(1.5);
+    island.setPosition(0, 0.5, 0);
+    island.dispose();
+    expect(island.group.children).toHaveLength(0);
+  });
+
+  test('water keeps a closed foam band and stable resources across animation', () => {
+    const water = new SanctuaryWater(LOCATIONS[0], 'japan');
+    const depth: THREE.InstancedMesh[] = [];
+    const ripples: THREE.InstancedMesh[] = [];
+    let foam: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> | undefined;
+    water.group.traverse((child) => {
+      if (child.userData.waterPart === 'foam') {
+        foam = child as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+      } else if (child instanceof THREE.InstancedMesh && child.userData.waterPart === 'depth') {
+        depth.push(child);
+      } else if (child instanceof THREE.InstancedMesh && child.userData.waterPart === 'ripple') {
+        ripples.push(child);
+      }
+    });
+    expect(depth).toHaveLength(5);
+    depth.sort((a, b) => a.userData.band - b.userData.band);
+    expect(depth.map((mesh) => (mesh.material as THREE.MeshBasicMaterial).opacity)).toEqual([
+      1, 0.9, 0.76, 0.56, 0.34,
+    ]);
+    expect(ripples).toHaveLength(2);
+    expect(ripples[0].count).toBeLessThan(36);
+    expect(ripples[1].count).toBeLessThan(28);
+    if (!foam) throw new Error('Missing continuous foam mesh');
+    expect(foam.geometry.getAttribute('position').count).toBe(128);
+    expect(foam.geometry.index?.count).toBe(64 * 6);
+    const index = foam.geometry.index!;
+    expect(Array.from(index.array.slice(-6))).toEqual([126, 0, 1, 126, 1, 127]);
+    const foamGeometry = foam.geometry;
+    const foamMaterial = foam.material;
+    const rippleBuffers = ripples.map((mesh) => mesh.instanceMatrix);
+    water.update(0);
+    water.update(12.5);
+    expect(foam.geometry).toBe(foamGeometry);
+    expect(foam.material).toBe(foamMaterial);
+    ripples.forEach((mesh, i) => expect(mesh.instanceMatrix).toBe(rippleBuffers[i]));
+    water.dispose();
+    expect(water.group.children).toHaveLength(0);
+  });
+
+  test('shoreline detail builds for all twelve sanctuaries', () => {
+    for (const location of LOCATIONS) {
+      const details = new SanctuaryDetails(location.id);
+      expect(details.group.children.length, location.id).toBeGreaterThan(0);
+      const lights = details.group.children.filter((c) => c instanceof THREE.PointLight);
+      expect(lights.length, location.id).toBeLessThanOrEqual(3);
+      details.group.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          const materials = Array.isArray(child.material) ? child.material : [child.material];
+          materials.forEach((m) => m.dispose());
+        }
+      });
+    }
   });
 });
 

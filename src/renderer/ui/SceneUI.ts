@@ -1,12 +1,16 @@
 // ===== src/renderer/ui/SceneUI.ts =====
-// Scene-level UI: START button, toolbar (Fishpedia/Settings), backdrop.
-// Controls auto-rotate during idle. Bridges RunUI panels with the scene.
+// Scene-level UI: brand mark, location plate, main action, tool group, backdrop.
+// The window stays transparent — only these surfaces carry colour. The drag bar
+// and window controls are owned by index.ts / main.css and remain untouched.
+// Bridges RunUI panels with the 3D scene and drives idle auto-rotation.
 
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../../shared/events';
 import { i18n } from '../i18n/I18n';
-import { THEME } from './theme';
+import { svgIcon } from './icons';
+import type { IconName } from './icons';
 import { LOCATIONS } from '../data/location-data';
+import { FISH_DATABASE } from '../data/fish-database';
 
 export class SceneUI {
   private eventBus: EventBus;
@@ -14,6 +18,14 @@ export class SceneUI {
   private backdrop: HTMLDivElement;
   private startBtn: HTMLDivElement;
   private toolbar: HTMLDivElement;
+  private locationPlate: HTMLDivElement;
+  private plateIndex!: HTMLSpanElement;
+  private plateCountry!: HTMLSpanElement;
+  private plateName!: HTMLElement;
+  private plateNameEn!: HTMLSpanElement;
+  private plateMood!: HTMLSpanElement;
+  private plateProgress!: HTMLSpanElement;
+  private plateBarFill!: HTMLElement;
   private devMode: boolean;
 
   // Callbacks set by owner
@@ -24,74 +36,86 @@ export class SceneUI {
   onScenePrev: (() => void) | null = null;
   onSceneNext: (() => void) | null = null;
 
-  private _autoRotate = false; // start still, rotate after idle
+  private _autoRotate = false;
   private _runActive = false;
   private _idleTimer: ReturnType<typeof setTimeout> | null = null;
-  private readonly IDLE_AUTOROTATE_DELAY = 3000;
-  private _themeColor = '#44dd88';
+  private readonly IDLE_AUTOROTATE_DELAY = 6000;
+  private _locationId = 'japan';
+  private _discoveredCount = 0;
 
   constructor(eventBus: EventBus, devMode = false) {
     this.devMode = devMode;
     this.eventBus = eventBus;
-    // Start idle timer immediately — rotate after 3s of no interaction
     this._resetIdleTimer();
+
     this.container = document.createElement('div');
     this.container.id = 'scene-ui';
-    this.container.style.cssText =
-      'position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 55;';
     document.body.appendChild(this.container);
+    document.body.dataset.phase = 'menu';
 
-    // ── Backdrop (dims scene when panels open) ──
-    this.backdrop = document.createElement('div');
-    this.backdrop.style.cssText = `
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.5); display: none;
-      pointer-events: all;
-    `;
-    this.backdrop.addEventListener('click', () => {}); // block clicks through to scene
-    this.container.appendChild(this.backdrop);
+    // ── Brand mark (top-left) ──
+    const wordmark = document.createElement('div');
+    wordmark.id = 'sanctuary-wordmark';
+    wordmark.innerHTML = `
+      <span class="brand-mark">${svgIcon('soul', 13)}</span>
+      <span class="brand-text">
+        <span class="brand-name">SOUL SANCTUARY</span>
+        <i class="brand-sub">${i18n.t('ui.brandTag')}</i>
+      </span>`;
+    this.container.appendChild(wordmark);
 
-    // ── START button (center of scene, visible when idle) ──
-    this.startBtn = document.createElement('div');
-    this.startBtn.id = 'btn-start';
-    this.startBtn.dataset.testid = 'start-button';
-    this.startBtn.style.cssText = `
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      padding: 10px 36px;
-      background: ${this._hexToRgba(this._themeColor, 0.28)};
-      border: 1px solid ${this._hexToRgba(this._themeColor, 0.55)};
-      color: ${this._themeColor}; font-family: ${THEME.panel.font};
-      font-size: 13px; letter-spacing: 3px;
-      cursor: pointer; pointer-events: all;
-      border-radius: ${THEME.radius.sm}; display: none;
-      transition: background 0.2s, box-shadow 0.2s;
-      text-shadow: 0 1px 3px rgba(0,0,0,0.5);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    `;
-    this.startBtn.textContent = i18n.t('ui.start');
-    // Guide text above button
+    // ── Location plate (top-left, below the brand) ──
+    this.locationPlate = document.createElement('div');
+    this.locationPlate.id = 'location-plate';
+    this.locationPlate.innerHTML = `
+      <div class="plate-head">
+        <span class="plate-index">01</span>
+        <span class="plate-divider">/</span>
+        <span class="plate-total">12</span>
+        <span class="plate-spacer"></span>
+        <span class="plate-country">JAPAN</span>
+        <span class="plate-progress"></span>
+      </div>
+      <strong class="plate-name"></strong>
+      <span class="plate-name-en"></span>
+      <span class="plate-mood">${i18n.t('scene.mood')}</span>
+      <span class="plate-bar"><i></i></span>`;
+    this.container.appendChild(this.locationPlate);
+    this.plateIndex = this.locationPlate.querySelector('.plate-index') as HTMLSpanElement;
+    this.plateCountry = this.locationPlate.querySelector('.plate-country') as HTMLSpanElement;
+    this.plateName = this.locationPlate.querySelector('.plate-name') as HTMLElement;
+    this.plateNameEn = this.locationPlate.querySelector('.plate-name-en') as HTMLSpanElement;
+    this.plateMood = this.locationPlate.querySelector('.plate-mood') as HTMLSpanElement;
+    this.plateProgress = this.locationPlate.querySelector('.plate-progress') as HTMLSpanElement;
+    this.plateBarFill = this.locationPlate.querySelector('.plate-bar > i') as HTMLElement;
+
+    // ── Tagline above the main action ──
     const guide = document.createElement('div');
-    guide.style.cssText = `
-      position: absolute; top: 42%; left: 50%; transform: translate(-50%, -50%);
-      color: ${THEME.text.secondary}; font-family: ${THEME.panel.font};
-      font-size: 9px; letter-spacing: 2px; pointer-events: none;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.6);
-    `;
+    guide.id = 'scene-guide';
     guide.textContent = i18n.t('ui.castHint');
     this.container.appendChild(guide);
-    this.startBtn.addEventListener('mouseenter', () => {
-      this.startBtn.style.background = this._hexToRgba(this._themeColor, 0.42);
-      this.startBtn.style.boxShadow = `0 0 24px ${this._hexToRgba(this._themeColor, 0.35)}, 0 4px 16px rgba(0,0,0,0.25)`;
-    });
-    this.startBtn.addEventListener('mouseleave', () => {
-      this.startBtn.style.background = this._hexToRgba(this._themeColor, 0.28);
-      this.startBtn.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)';
-    });
-    this.startBtn.addEventListener('mousedown', () => {
-      this.startBtn.style.transform = 'translate(-50%, -50%) scale(0.94)';
-    });
-    this.startBtn.addEventListener('mouseup', () => {
-      this.startBtn.style.transform = 'translate(-50%, -50%) scale(1)';
+
+    // ── Backdrop (dims scene while a panel is open) ──
+    this.backdrop = document.createElement('div');
+    this.backdrop.className = 'scene-backdrop';
+    this.backdrop.addEventListener('click', (e) => e.stopPropagation());
+    this.container.appendChild(this.backdrop);
+
+    // ── Main action: start fishing ──
+    this.startBtn = document.createElement('div');
+    this.startBtn.id = 'btn-start';
+    this.startBtn.setAttribute('role', 'button');
+    this.startBtn.tabIndex = 0;
+    this.startBtn.dataset.testid = 'start-button';
+    this.startBtn.innerHTML = `
+      ${svgIcon('rod', 15)}
+      <span class="btn-start__label">${i18n.t('ui.startFishing')}</span>
+      <span class="btn-start__sub">START</span>`;
+    this.startBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.startBtn.click();
+      }
     });
     this.startBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -101,23 +125,42 @@ export class SceneUI {
     });
     this.container.appendChild(this.startBtn);
 
-    // ── Toolbar (bottom-right icons) ──
+    // ── Tool group (bottom-right) ──
     this.toolbar = document.createElement('div');
-    this.toolbar.style.cssText = `
-      position: absolute; bottom: 8px; right: 8px; z-index: 10;
-      display: flex; gap: 6px; pointer-events: none;
-    `;
+    this.toolbar.id = 'scene-toolbar';
+    this.container.appendChild(this.toolbar);
 
-    // DEV: scene test buttons (prev/next location) — only visible in dev mode
+    // Keep the fishpedia button first in DOM order: capture scripts use the
+    // first aria-labelled toolbar button containing an SVG to open the guide.
+    const bookBtn = this._makeTool('book', i18n.t('scene.openFishpedia'));
+    bookBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onFishpedia) this.onFishpedia();
+    });
+    this.toolbar.appendChild(bookBtn);
+
+    const soulBtn = this._makeTool('soul', i18n.t('scene.openSouls'));
+    soulBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onSouls) this.onSouls();
+    });
+    this.toolbar.appendChild(soulBtn);
+
+    const settingsBtn = this._makeTool('settings', i18n.t('scene.openSettings'));
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.onSettings) this.onSettings();
+    });
+    this.toolbar.appendChild(settingsBtn);
+
     if (this.devMode) {
-      const prevBtn = this._makeIcon('◀', 'Prev Location (Dev)');
+      const prevBtn = this._makeTool('chevronLeft', i18n.t('scene.prevLocation'), true);
       prevBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (this.onScenePrev) this.onScenePrev();
       });
       this.toolbar.appendChild(prevBtn);
-
-      const nextBtn = this._makeIcon('▶', 'Next Location (Dev)');
+      const nextBtn = this._makeTool('chevronRight', i18n.t('scene.nextLocation'), true);
       nextBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (this.onSceneNext) this.onSceneNext();
@@ -125,92 +168,107 @@ export class SceneUI {
       this.toolbar.appendChild(nextBtn);
     }
 
-    const bookBtn = this._makeIcon('📖', i18n.t('ui.fishpedia'));
-    bookBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this.onFishpedia) this.onFishpedia();
-    });
-    this.toolbar.appendChild(bookBtn);
+    this._renderPlate();
 
-    const soulBtn = this._makeIcon('🔮', i18n.t('ui.souls'));
-    soulBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this.onSouls) this.onSouls();
-    });
-    this.toolbar.appendChild(soulBtn);
-
-    const settingsBtn = this._makeIcon('⚙️', i18n.t('ui.settings'));
-    settingsBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this.onSettings) this.onSettings();
-    });
-    this.toolbar.appendChild(settingsBtn);
-
-    this.container.appendChild(this.toolbar);
-
-    // ── Idle auto-rotate: stop on ANY click, resume after 3s idle (works during fishing too) ──
+    // ── Idle auto-rotate: stop on any click, resume after idle ──
     this.eventBus.on('input:down', () => {
       this._autoRotate = false;
       this._resetIdleTimer();
     });
 
-    // REF-4: adapt scene UI accent to location theme
+    // ── Location transitions ──
     this.eventBus.on(GameEvents.GAME_LOCATION_CHANGE, (p) => {
+      this._locationId = p.locationId;
       const loc = LOCATIONS.find((l) => l.id === p.locationId);
       if (loc?.theme) {
-        this._themeColor = '#' + loc.theme.uiAccent.toString(16).padStart(6, '0');
-        this.startBtn.style.background = this._hexToRgba(this._themeColor, 0.18);
-        this.startBtn.style.borderColor = this._hexToRgba(this._themeColor, 0.4);
-        this.startBtn.style.color = this._themeColor;
+        const accent = '#' + loc.theme.uiAccent.toString(16).padStart(6, '0');
+        document.documentElement.style.setProperty('--location-accent', accent);
       }
+      this._renderPlate();
     });
 
-    // ── Subscribe to run state ──
+    // ── Field-guide progress on the plate ──
+    this.eventBus.on(GameEvents.GAME_FISHPEDIA_COUNT_UPDATE, (p) => {
+      this._discoveredCount = p.count;
+      this._renderPlateProgress();
+    });
+
+    // ── Run state ──
     this.eventBus.on(GameEvents.RUN_START, () => {
+      document.body.dataset.phase = 'fishing';
       this._runActive = true;
       this._autoRotate = false;
       this._clearIdleTimer();
       this.startBtn.style.display = 'none';
     });
     this.eventBus.on(GameEvents.RUN_END, () => {
+      document.body.dataset.phase = 'menu';
       this._runActive = false;
       this._autoRotate = true;
     });
     this.eventBus.on(GameEvents.GAME_PHASE_CHANGE, (p) => {
+      document.body.dataset.phase = p.phase;
       if (p.phase === 'menu') {
         this._runActive = false;
         this._autoRotate = true;
-        this.startBtn.style.display = 'block';
+        this.showStart();
       }
-      if (p.phase === 'fishing') {
+      if (p.phase === 'fishing' || p.phase === 'run_prep') {
         this.startBtn.style.display = 'none';
       }
     });
   }
 
-  private _makeIcon(symbol: string, title: string): HTMLDivElement {
-    const btn = document.createElement('div');
-    btn.textContent = symbol;
-    btn.title = title;
-    btn.style.cssText = `
-      width: 24px; height: 24px; display: flex;
-      align-items: center; justify-content: center;
-      background: rgba(0,0,0,0.25);
-      border: 1px solid ${THEME.border.strong};
-      border-radius: ${THEME.radius.sm}; font-size: 12px;
-      cursor: pointer; pointer-events: all;
-      transition: background 0.15s;
-      text-shadow: 0 1px 2px rgba(0,0,0,0.6);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    `;
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = 'rgba(0,0,0,0.45)';
+  // ══ Plate ══
+
+  private _renderPlate(): void {
+    const index = Math.max(
+      0,
+      LOCATIONS.findIndex((l) => l.id === this._locationId),
+    );
+    const loc = LOCATIONS[index];
+    if (!loc) return;
+    const total = String(LOCATIONS.length);
+    this.plateIndex.textContent = String(index + 1).padStart(2, '0');
+    const totalEl = this.locationPlate.querySelector('.plate-total');
+    if (totalEl) totalEl.textContent = total;
+    this.plateCountry.textContent = loc.country;
+    this.plateName.textContent = loc.name[i18n.lang];
+    this.plateNameEn.textContent = i18n.lang === 'zh' ? loc.name.en : loc.name.zh;
+    this.plateMood.textContent = i18n.t('scene.mood');
+    this._renderPlateProgress();
+  }
+
+  private _renderPlateProgress(): void {
+    const total = FISH_DATABASE.length || 1;
+    const pct = Math.max(0, Math.min(1, this._discoveredCount / total));
+    this.plateBarFill.style.transform = `scaleX(${pct})`;
+    this.plateProgress.textContent = i18n.t('scene.progress', {
+      '0': this._discoveredCount,
+      '1': FISH_DATABASE.length,
     });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'rgba(0,0,0,0.25)';
+  }
+
+  // ══ Tools ══
+
+  private _makeTool(icon: IconName, title: string, dev = false): HTMLDivElement {
+    const btn = document.createElement('div');
+    btn.className = dev ? 'scene-tool dev-scene-tool' : 'scene-tool';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-label', title);
+    btn.title = title;
+    btn.tabIndex = 0;
+    btn.innerHTML = svgIcon(icon, dev ? 12 : 15);
+    btn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        btn.click();
+      }
     });
     return btn;
   }
+
+  // ══ Public API ══
 
   get autoRotate(): boolean {
     return this._autoRotate;
@@ -230,18 +288,20 @@ export class SceneUI {
     }
   }
 
-  /** Show backdrop + return its element for panel stacking. */
+  /** Show the dimmed backdrop used behind camp / picker / result panels. */
   showBackdrop(): void {
     this.backdrop.style.display = 'block';
+    document.body.dataset.panelOpen = 'true';
   }
 
   hideBackdrop(): void {
     this.backdrop.style.display = 'none';
+    delete document.body.dataset.panelOpen;
   }
 
   showStart(): void {
     if (!this._runActive) {
-      this.startBtn.style.display = 'block';
+      this.startBtn.style.display = 'inline-flex';
       this.startBtn.style.pointerEvents = 'all';
       this.startBtn.style.opacity = '1';
     }
@@ -249,13 +309,6 @@ export class SceneUI {
 
   hideStart(): void {
     this.startBtn.style.display = 'none';
-  }
-
-  private _hexToRgba(hex: string, alpha: number): string {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   dispose(): void {

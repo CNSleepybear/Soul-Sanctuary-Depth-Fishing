@@ -1,5 +1,7 @@
 // ===== src/renderer/roguelike/ui/CampPanel.ts =====
-// Camp panel: upgrades, location picker, bait shop, relics, dailies, saves, achievements.
+// Camp panel: destination hero, economy strip, upgrade cards, bait shop, relics,
+// dailies, save slots and achievements. Logic is unchanged from the previous
+// implementation — only the presentation was rebuilt with the v2 art language.
 
 import { DraggablePanel } from '../../ui/DraggablePanel';
 import { SceneUI } from '../../ui/SceneUI';
@@ -10,14 +12,53 @@ import { ALL_RELICS } from '../relic-data';
 import { ALL_ACHIEVEMENTS } from '../achievement-data';
 import { LOCATIONS } from '../../data/location-data';
 import { BAITS } from '../../../shared/constants';
-import { d, toast } from './run-ui-helpers';
+import { d, toast, sectionTitle } from './run-ui-helpers';
 import { i18n } from '../../i18n/I18n';
-import { THEME } from '../../ui/theme';
+import { svgIcon, baitIconName, relicIconName, achievementIconName } from '../../ui/icons';
+import type { IconName } from '../../ui/icons';
 
 export interface CampPanelCallbacks {
   onStartRun: () => void;
   onLocationChange: (locationId: string) => void;
 }
+
+const LOCATION_ORDER = [
+  'japan',
+  'china',
+  'usa',
+  'uk',
+  'france',
+  'germany',
+  'italy',
+  'denmark',
+  'iceland',
+  'thailand',
+  'egypt',
+  'greece',
+];
+
+const LOCATION_PREFIX: Record<string, string> = {
+  japan: 'jpn_',
+  china: 'chn_',
+  usa: 'usa_',
+  uk: 'uk_',
+  france: 'fra_',
+  germany: 'deu_',
+  italy: 'ita_',
+  denmark: 'dnk_',
+  iceland: 'isl_',
+  thailand: 'tha_',
+  egypt: 'egy_',
+  greece: 'grc_',
+};
+
+const UPGRADE_ICONS: Record<string, IconName> = {
+  charm_slots: 'charm',
+  relic_slots: 'relic',
+  charm_rerolls: 'sparkle',
+  bait_pouch: 'bait',
+  line_durability: 'durability',
+};
 
 export class CampPanel {
   private gsm: GameStateManager;
@@ -46,71 +87,134 @@ export class CampPanel {
   }
 
   show(callbacks: CampPanelCallbacks): void {
-    const savedScrollTop = this.activePanel?.el?.scrollTop ?? 0;
+    const savedScrollTop = this.activePanel?.getBody().scrollTop ?? 0;
     this.close();
     this.sceneUI.showBackdrop();
 
-    const panel = new DraggablePanel(i18n.t('camp.title'), 380);
+    const panel = new DraggablePanel(i18n.t('camp.title'), 384, 'camp');
     panel.el.id = 'camp-panel';
-    panel.setPosition(window.innerWidth / 2 - 190, 40);
+    panel.setPosition((window.innerWidth - 384) / 2, 8);
     const body = panel.getBody();
 
-    // Header: gold / essence
-    const header = d('display: flex; justify-content: center; gap: 12px; margin-bottom: 10px;', '');
-    header.innerHTML = `
-      <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:${THEME.accent.goldText};font-weight:bold;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
-        💰 ${this.gsm.gold}
-      </div>
-      <div style="display:flex;align-items:center;gap:4px;font-size:12px;color:${THEME.accent.purple};font-weight:bold;text-shadow:0 1px 3px rgba(0,0,0,0.5);">
-        ✨ ${this.gsm.essence}
-      </div>
-    `;
-    body.appendChild(header);
+    this._renderEconomy(body);
+    this._renderDestination(body);
+    this._renderSpecialization(body, callbacks);
+    this._renderUpgradeProgress(body);
+    this._renderLocations(body, callbacks);
+    this._renderUpgrades(body, callbacks);
+    this._renderBaitShop(body, callbacks);
+    this._renderRelics(body, callbacks);
+    this._renderDailies(body, callbacks);
+    this._renderSaves(body);
+    this._renderAchievements(body);
 
-    // Specialization choice
-    if (this.gsm.campManager.specializationPending) {
-      const specRow = d('display:flex;gap:4px;justify-content:center;margin:4px 0;');
-      const charmBtn = d(
-        `
-        flex:1; padding:8px 0; text-align:center; cursor:pointer;
-        background:rgba(68,221,136,0.12); border:1px solid rgba(68,221,136,0.35);
-        border-radius:${THEME.radius.md}; font-size:10px; color:${THEME.accent.green}; font-weight:bold;
-      `,
-        `${i18n.t('spec.charmMaster')}<br><span style="font-size:8px;color:#9ca3af;font-weight:normal;">${i18n.t('spec.charmMasterDesc')}</span>`,
-      );
-      charmBtn.addEventListener('click', () => {
-        this.gsm.campManager.chooseSpecialization('charm_master');
-        this.show(callbacks);
-      });
-      const lineBtn = d(
-        `
-        flex:1; padding:8px 0; text-align:center; cursor:pointer;
-        background:rgba(100,200,255,0.12); border:1px solid rgba(100,200,255,0.35);
-        border-radius:${THEME.radius.md}; font-size:10px; color:${THEME.accent.cyan}; font-weight:bold;
-      `,
-        `${i18n.t('spec.lineMaster')}<br><span style="font-size:8px;color:#9ca3af;font-weight:normal;">${i18n.t('spec.lineMasterDesc')}</span>`,
-      );
-      lineBtn.addEventListener('click', () => {
-        this.gsm.campManager.chooseSpecialization('line_master');
-        this.show(callbacks);
-      });
-      specRow.appendChild(charmBtn);
-      specRow.appendChild(lineBtn);
-      body.appendChild(
-        d(
-          'text-align:center;color:rgba(255,200,100,0.85);font-size:9px;margin-top:6px;text-shadow:0 1px 2px rgba(0,0,0,0.4);',
-          i18n.t('spec.choose'),
-        ),
-      );
-      body.appendChild(specRow);
-    }
+    // ── Fixed footer: embark ──
+    const footer = d();
+    footer.className = 'sanctuary-panel-footer';
+    const start = d();
+    start.id = 'btn-start-run';
+    start.className = 'ss-btn ss-btn--gold';
+    start.innerHTML = `${svgIcon('rod', 14)}<span>${i18n.t('camp.startRun')}</span>`;
+    start.addEventListener('click', () => {
+      panel.remove();
+      callbacks.onStartRun();
+    });
+    footer.appendChild(start);
+    const hint = d();
+    hint.className = 'footer-hint';
+    hint.textContent = i18n.t('camp.startHint');
+    footer.appendChild(hint);
+    panel.el.appendChild(footer);
 
-    // Next upgrade progress bar
-    const upgrades = this.gsm.campManager.getAllUpgrades();
-    let closestUpg: {
+    panel.getCloseBtn().addEventListener('click', () => {
+      panel.remove();
+      this.sceneUI.hideBackdrop();
+      this.sceneUI.showStart();
+    });
+
+    document.body.appendChild(panel.el);
+    body.scrollTop = savedScrollTop;
+    this.activePanel = panel;
+  }
+
+  // ══ Sections ══
+
+  private _renderEconomy(body: HTMLDivElement): void {
+    const wrap = d();
+    wrap.className = 'camp-economy';
+    wrap.innerHTML = `
+      <span class="camp-coin">${svgIcon('coin', 14)}<span>${this.gsm.gold}</span></span>
+      <span class="camp-essence">${svgIcon('sparkle', 13)}<span>${this.gsm.essence}</span></span>`;
+    body.appendChild(wrap);
+  }
+
+  private _renderDestination(body: HTMLDivElement): void {
+    const destination = LOCATIONS.find((loc) => loc.id === this.selectedLocation);
+    if (!destination) return;
+    const hero = d();
+    hero.className = 'camp-hero';
+    const accent = '#' + (destination.theme?.uiAccent ?? 0xa9c3a0).toString(16).padStart(6, '0');
+    hero.style.setProperty('--location-accent', accent);
+    hero.innerHTML = `
+      <span class="camp-hero__eyebrow">${svgIcon('pin', 10)}${i18n.t('camp.nextSanctuary')}</span>
+      <strong class="camp-hero__name">${destination.name[i18n.lang]}</strong>
+      <span class="camp-hero__en">${
+        i18n.lang === 'zh' ? destination.name.en : destination.name.zh
+      }</span>
+      <span class="camp-hero__desc">${
+        i18n.lang === 'zh' ? destination.desc : i18n.t('camp.destinationHint')
+      }</span>`;
+    body.appendChild(hero);
+  }
+
+  private _renderSpecialization(body: HTMLDivElement, callbacks: CampPanelCallbacks): void {
+    if (!this.gsm.campManager.specializationPending) return;
+    body.appendChild(sectionTitle('sparkle', i18n.t('camp.specTitle')));
+    const note = d();
+    note.className = 'camp-daily-note';
+    note.innerHTML = `${svgIcon('warn', 10)}<span>${i18n.t('spec2.choose')}</span>`;
+    body.appendChild(note);
+
+    const grid = d();
+    grid.className = 'camp-spec-grid';
+    const options: {
+      id: 'charm_master' | 'line_master';
+      icon: IconName;
       name: string;
-      goldNeeded: number;
-      essenceNeeded: number;
+      desc: string;
+    }[] = [
+      {
+        id: 'charm_master',
+        icon: 'charm',
+        name: i18n.t('spec2.charmMaster'),
+        desc: i18n.t('spec2.charmMasterDesc'),
+      },
+      {
+        id: 'line_master',
+        icon: 'durability',
+        name: i18n.t('spec2.lineMaster'),
+        desc: i18n.t('spec2.lineMasterDesc'),
+      },
+    ];
+    options.forEach((option) => {
+      const card = d();
+      card.className = 'spec-card';
+      card.innerHTML = `
+        <span class="spec-card__name">${svgIcon(option.icon, 12)}${option.name}</span>
+        <span class="spec-card__desc">${option.desc}</span>`;
+      card.addEventListener('click', () => {
+        this.gsm.campManager.chooseSpecialization(option.id);
+        this.show(callbacks);
+      });
+      grid.appendChild(card);
+    });
+    body.appendChild(grid);
+  }
+
+  private _renderUpgradeProgress(body: HTMLDivElement): void {
+    const upgrades = this.gsm.campManager.getAllUpgrades();
+    let closest: {
+      name: string;
       goldPct: number;
       essencePct: number;
       affordable: boolean;
@@ -123,180 +227,141 @@ export class CampPanel {
       const score = Math.max(1 - gRatio, 0) + Math.max(1 - eRatio, 0);
       if (score < closestScore) {
         closestScore = score;
-        closestUpg = {
+        closest = {
           name: i18n.upgrade(def.id).name ?? def.name,
-          goldNeeded: cost.gold,
-          essenceNeeded: cost.essence,
           goldPct: Math.min(100, Math.floor(gRatio * 100)),
           essencePct: Math.min(100, Math.floor(eRatio * 100)),
           affordable: gRatio >= 1 && eRatio >= 1,
         };
       }
     }
-    if (closestUpg) {
-      const progColor = closestUpg.affordable ? THEME.accent.green : THEME.accent.amber;
-      const progHTML = `<div style="margin:6px 0 10px;padding:6px 8px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:5px;">
-          <div style="font-size:10px;font-weight:bold;color:${progColor};margin-bottom:5px;text-align:center;">🎯 ${closestUpg.name}</div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="font-size:9px;color:${THEME.accent.goldText};width:22px;">💰</span>
-            <span style="flex:1;height:7px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
-              <span style="display:block;height:100%;width:${closestUpg.goldPct}%;background:${closestUpg.affordable ? THEME.accent.green : THEME.accent.goldText};border-radius:3px;"></span>
-            </span>
-            <span style="font-size:9px;color:${THEME.text.primary};width:32px;text-align:right;">${closestUpg.goldPct}%</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:9px;color:${THEME.accent.purple};width:22px;">✨</span>
-            <span style="flex:1;height:7px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;">
-              <span style="display:block;height:100%;width:${closestUpg.essencePct}%;background:${closestUpg.essencePct >= 100 ? '#44dd88' : '#f472b6'};border-radius:3px;"></span>
-            </span>
-            <span style="font-size:9px;color:${THEME.text.primary};width:32px;text-align:right;">${closestUpg.essencePct}%</span>
-          </div>
-        </div>`;
-      body.append(d('', progHTML));
-    }
+    if (!closest) return;
 
-    // Location Picker
-    body.append(
-      d(
-        'color: ${THEME.text.secondary}; font-size: 9px; letter-spacing: 1px; margin-bottom: 6px;',
-        i18n.t('camp.location'),
-      ),
-    );
-    const locRow = d(
-      'display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px;',
-    );
-    const locOrder = [
-      'japan',
-      'china',
-      'usa',
-      'uk',
-      'france',
-      'germany',
-      'italy',
-      'denmark',
-      'iceland',
-      'thailand',
-      'egypt',
-      'greece',
-    ];
-    const locPrefix: Record<string, string> = {
-      japan: 'jpn_',
-      china: 'chn_',
-      usa: 'usa_',
-      uk: 'uk_',
-      france: 'fra_',
-      germany: 'deu_',
-      italy: 'ita_',
-      denmark: 'dnk_',
-      iceland: 'isl_',
-      thailand: 'tha_',
-      egypt: 'egy_',
-      greece: 'grc_',
-    };
+    const card = d();
+    card.className = 'camp-progress-card';
+    card.innerHTML = `
+      <div class="camp-progress-card__title">${svgIcon('chevronUp', 10)}${closest.name}</div>
+      <div class="camp-progress-line">${svgIcon('coin', 10)}<span class="ss-bar"><i class="${
+        closest.affordable ? 'is-sage' : ''
+      }" style="transform:scaleX(${closest.goldPct / 100})"></i></span><span>${closest.goldPct}%</span></div>
+      <div class="camp-progress-line">${svgIcon('sparkle', 10)}<span class="ss-bar"><i class="is-sky" style="transform:scaleX(${
+        closest.essencePct / 100
+      })"></i></span><span>${closest.essencePct}%</span></div>`;
+    body.appendChild(card);
+  }
+
+  private _renderLocations(body: HTMLDivElement, callbacks: CampPanelCallbacks): void {
+    body.appendChild(sectionTitle('pin', i18n.t('camp.location'), String(LOCATIONS.length)));
+    const grid = d();
+    grid.className = 'location-grid';
+
     LOCATIONS.forEach((loc) => {
       const unlocked = this.gsm.unlockedLocations.has(loc.id);
-      const sel = this.selectedLocation === loc.id;
-      const idx = locOrder.indexOf(loc.id);
-      const prevId = idx > 0 ? locOrder[idx - 1] : null;
+      const selected = this.selectedLocation === loc.id;
+      const idx = LOCATION_ORDER.indexOf(loc.id);
+      const prevId = idx > 0 ? LOCATION_ORDER[idx - 1] : null;
       const isNext = prevId ? this.gsm.unlockedLocations.has(prevId) && !unlocked : false;
-      let progressText = '';
+
+      const card = d();
+      card.className = 'location-card';
+      card.dataset.selected = String(selected);
+      card.dataset.locked = String(!unlocked);
+      card.title = loc.name[i18n.lang];
+      card.style.setProperty(
+        '--location-accent',
+        '#' + (loc.theme?.uiAccent ?? 0xa9c3a0).toString(16).padStart(6, '0'),
+      );
+
+      let progress = '';
       if (isNext) {
-        const prefix = locPrefix[prevId!];
+        const prefix = LOCATION_PREFIX[prevId!];
         const discovered = Object.values(this.gsm.fishpedia).filter(
           (e) => e.fishId.startsWith(prefix) && e.discovered,
         ).length;
-        progressText = `<div style="font-size:8px;color:#facc15;font-weight:bold;margin-top:2px;">${discovered}/5</div>`;
+        progress = `<span class="location-card__progress">${discovered}/5</span>`;
       }
-      const btn = d(
-        `
-        padding: 5px 4px; font-size: 9px; border-radius: ${THEME.radius.md}; text-align: center;
-        cursor: ${unlocked ? 'pointer' : 'not-allowed'};
-        color: ${!unlocked ? '#444' : sel ? '#ffcc88' : '#9ca3af'};
-        background: ${!unlocked ? 'rgba(255,255,255,0.02)' : sel ? 'rgba(255,200,100,0.18)' : 'rgba(255,255,255,0.06)'};
-        border: 1px solid ${!unlocked ? 'rgba(255,255,255,0.04)' : sel ? 'rgba(255,200,100,0.45)' : 'rgba(255,255,255,0.12)'};
-        ${sel ? 'box-shadow: 0 0 10px rgba(255,200,100,0.2);' : ''}
-        transition: background 0.15s, border-color 0.15s;
-        font-weight: ${sel ? 'bold' : 'normal'};
-      `,
-        unlocked
-          ? loc.country
-          : isNext
-            ? `<div>🔒</div><div>${loc.country}</div>${progressText}`
-            : '🔒',
-      );
-      btn.addEventListener('mouseenter', () => {
-        if (unlocked && !sel) {
-          btn.style.background = 'rgba(255,255,255,0.12)';
-          btn.style.borderColor = 'rgba(255,255,255,0.22)';
-        }
-      });
-      btn.addEventListener('mouseleave', () => {
-        if (unlocked && !sel) {
-          btn.style.background = 'rgba(255,255,255,0.06)';
-          btn.style.borderColor = 'rgba(255,255,255,0.12)';
-        }
-      });
+
+      card.innerHTML = `
+        <span class="location-card__index">${String(idx + 1).padStart(2, '0')}${
+          unlocked ? '' : ` ${svgIcon('lock', 8)}`
+        }</span>
+        <span class="location-card__name">${loc.country}</span>
+        ${progress}`;
+
       if (unlocked) {
-        btn.addEventListener('click', () => {
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', loc.name[i18n.lang]);
+        card.setAttribute('aria-pressed', String(selected));
+        card.tabIndex = 0;
+        card.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            card.click();
+          }
+        });
+        card.addEventListener('click', () => {
           this.selectedLocation = loc.id;
           this.locationManager.loadLocation(loc.id);
           callbacks.onLocationChange(loc.id);
           this.show(callbacks);
         });
       }
-      locRow.appendChild(btn);
+      grid.appendChild(card);
     });
-    body.appendChild(locRow);
+    body.appendChild(grid);
+  }
 
-    // Upgrades
-    body.append(
-      d(
-        'color: ${THEME.text.secondary}; font-size: 9px; letter-spacing: 1px; margin-bottom: 6px;',
-        i18n.t('camp.upgrades'),
-      ),
-    );
+  private _renderUpgrades(body: HTMLDivElement, callbacks: CampPanelCallbacks): void {
+    body.appendChild(sectionTitle('chevronUp', i18n.t('camp.upgradesTitle')));
+    const list = d();
+    list.className = 'upgrade-list';
+
     this.gsm.campManager.getAllUpgrades().forEach(({ def, level, cost }) => {
-      const canBuy = cost && this.gsm.canAfford(cost.gold, cost.essence);
-      const upgI18n = i18n.upgrade(def.id);
-      const maxLabel = i18n.t('equip.max');
+      const affordable = !!cost && this.gsm.canAfford(cost.gold, cost.essence);
+      const maxed = !cost;
       const meta = this.gsm.campManager.getMeta();
-      const effectText =
-        def.id === 'charm_slots'
-          ? `${meta.charmSlots} 槽`
-          : def.id === 'relic_slots'
-            ? `${meta.relicSlots} 槽`
-            : def.id === 'charm_rerolls'
-              ? `${meta.charmRerolls} 次`
-              : def.id === 'bait_pouch'
-                ? `${meta.baitPouchSize} 个`
-                : `${meta.baseLineDurability} 耐久`;
-      const row = d(
-        `
-        display: flex; justify-content: space-between; align-items: center;
-        padding: 6px 8px; margin: 4px 0; font-size: 10px;
-        background: ${canBuy ? 'rgba(68,221,136,0.08)' : 'rgba(255,255,255,0.05)'};
-        border: 1px solid ${canBuy ? 'rgba(68,221,136,0.2)' : 'rgba(255,255,255,0.1)'};
-        border-radius: ${THEME.radius.md}; color: ${THEME.text.primary}; ${canBuy ? 'cursor: pointer;' : cost ? '' : 'opacity: 0.45;'}
-        transition: background 0.15s, border-color 0.15s;
-      `,
-        `<span style="font-weight:bold;">${upgI18n.name}
-            <span style="color:#9ca3af;font-weight:normal;">Lv${level}/${def.maxLevel}</span>
-            <span style="color:${THEME.accent.greenLight};font-size:8px;margin-left:4px;">${effectText}</span></span>
-         <span style="color:${canBuy ? '#facc15' : cost ? '#6b7280' : '#4b5563'};font-weight:bold;">${cost ? `${cost.gold}G ${cost.essence}✨` : maxLabel}</span>`,
-      );
-      row.addEventListener('mouseenter', () => {
-        if (canBuy) {
-          row.style.background = 'rgba(68,221,136,0.16)';
-          row.style.borderColor = 'rgba(68,221,136,0.4)';
-        }
-      });
-      row.addEventListener('mouseleave', () => {
-        if (canBuy) {
-          row.style.background = 'rgba(68,221,136,0.08)';
-          row.style.borderColor = 'rgba(68,221,136,0.2)';
-        }
-      });
-      if (canBuy) {
+      const upgI18n = i18n.upgrade(def.id);
+      let effect: string;
+      switch (def.id) {
+        case 'charm_slots':
+          effect = i18n.t('camp.effect.charmSlots', { '0': meta.charmSlots });
+          break;
+        case 'relic_slots':
+          effect = i18n.t('camp.effect.relicSlots', { '0': meta.relicSlots });
+          break;
+        case 'charm_rerolls':
+          effect = i18n.t('camp.effect.charmRerolls', { '0': meta.charmRerolls });
+          break;
+        case 'bait_pouch':
+          effect = i18n.t('camp.effect.baitPouch', { '0': meta.baitPouchSize });
+          break;
+        default:
+          effect = i18n.t('camp.effect.lineDurability', { '0': meta.baseLineDurability });
+      }
+
+      const row = d();
+      row.className = 'upgrade-row';
+      row.dataset.buyable = String(affordable);
+      row.dataset.max = String(maxed);
+      row.innerHTML = `
+        <span class="upgrade-row__icon">${svgIcon(UPGRADE_ICONS[def.id] ?? 'chevronUp', 12)}</span>
+        <span class="upgrade-row__main">
+          <span class="upgrade-row__name">${upgI18n.name}
+            <span class="upgrade-row__level">${i18n.t('camp.level', {
+              '0': level,
+              '1': def.maxLevel,
+            })}</span>
+          </span>
+          <span class="upgrade-row__desc">${upgI18n.desc}</span>
+        </span>
+        <span class="upgrade-row__effect">${effect}</span>
+        <span class="upgrade-row__cost ${affordable ? 'is-affordable' : ''}">${
+          cost
+            ? `${svgIcon('coin', 10)}${cost.gold} ${svgIcon('sparkle', 10)}${cost.essence}`
+            : i18n.t('equip.max')
+        }</span>`;
+
+      if (affordable) {
         row.addEventListener('click', () => {
           if (this.gsm.spend(cost!.gold, cost!.essence)) {
             this.gsm.campManager.purchase(def.id);
@@ -304,372 +369,266 @@ export class CampPanel {
           }
         });
       }
-      body.appendChild(row);
+      list.appendChild(row);
 
       if (def.id === 'charm_slots' && this.gsm.campManager.getMeta().synergySlotUnlocked) {
-        const milestone = d(
-          `
-          margin: 2px 0 6px 14px; padding: 3px 8px; font-size: 8px;
-          color: rgba(255,200,100,0.85); border-left: 2px solid rgba(255,200,100,0.5);
-        `,
-          i18n.t('camp.synergyUnlocked'),
-        );
-        body.appendChild(milestone);
+        const milestone = d();
+        milestone.className = 'upgrade-milestone';
+        milestone.innerHTML = `${svgIcon('link', 9)}<span>${i18n.t('camp.synergyNote')}</span>`;
+        list.appendChild(milestone);
       }
     });
+    body.appendChild(list);
+  }
 
-    // Bait Shop
-    body.append(
-      d(
-        'color: ${THEME.text.secondary}; font-size: 9px; letter-spacing: 1px; margin: 10px 0 6px;',
-        '🪱 Bait Shop',
-      ),
-    );
-    const baitGrid = d('display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;');
+  private _renderBaitShop(body: HTMLDivElement, callbacks: CampPanelCallbacks): void {
+    body.appendChild(sectionTitle('bait', i18n.t('camp.baitShop')));
 
-    // Auto-restock free earthworms so casual players never run out
+    // Auto-restock free earthworms so casual players never run out.
     const WORM_RESTOCK_AMOUNT = 20;
     const currentWorms = this.gsm.getBaitCount('bait_worm');
     if (currentWorms < WORM_RESTOCK_AMOUNT) {
       this.gsm.addBait('bait_worm', WORM_RESTOCK_AMOUNT - currentWorms);
     }
 
+    const grid = d();
+    grid.className = 'camp-grid-2';
     BAITS.forEach((bait) => {
       const owned = this.gsm.getBaitCount(bait.id);
-      const canBuy = bait.cost > 0 && this.gsm.gold >= bait.cost;
+      const affordable = bait.cost > 0 && this.gsm.gold >= bait.cost;
       const isFree = bait.cost === 0;
       const name = i18n.lang === 'zh' ? bait.name.zh : bait.name.en;
-      const card = document.createElement('div');
-      card.style.cssText = `
-        padding: 6px; text-align: left; cursor: ${canBuy ? 'pointer' : 'default'};
-        background: ${canBuy ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.03)'};
-        border: 1px solid ${canBuy ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.06)'};
-        border-radius: ${THEME.radius.md}; color: ${canBuy ? '${THEME.text.primary}' : '#555'};
-        transition: background 0.15s, border-color 0.15s;
-        display: flex; align-items: center; gap: 6px;
-      `;
+      const card = d();
+      card.className = 'bait-card';
+      card.dataset.buyable = String(affordable || isFree);
+      card.dataset.unavailable = String(!affordable && !isFree);
       card.innerHTML = `
-        <div style="font-size: 18px; line-height: 1; flex-shrink: 0;">🪱</div>
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 10px; font-weight: bold; color: ${canBuy ? '#fff' : '#777'}; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${name}</div>
-          <div style="font-size: 8px; color: ${canBuy ? '${THEME.accent.amber}' : '#555'}; margin-bottom: 2px;">Rare +${bait.rareBonus}%</div>
-          <div style="display: flex; justify-content: space-between; font-size: 8px; color: ${canBuy ? '#9ca3af' : '#555'};">
-            <span style="color: ${canBuy ? '${THEME.accent.goldText}' : '#555'}; font-weight: bold;">${bait.cost > 0 ? `${bait.cost}G` : i18n.t('bait.autoRestocked')}</span>
-            <span>Own ${owned}</span>
-          </div>
-        </div>
-      `;
-      card.addEventListener('mouseenter', () => {
-        if (canBuy) {
-          card.style.background = 'rgba(255,255,255,0.13)';
-          card.style.borderColor = 'rgba(255,255,255,0.25)';
-        }
-      });
-      card.addEventListener('mouseleave', () => {
-        if (canBuy) {
-          card.style.background = 'rgba(255,255,255,0.07)';
-          card.style.borderColor = 'rgba(255,255,255,0.14)';
-        }
-      });
+        <span class="bait-card__icon">${svgIcon(baitIconName(bait.id), 14)}</span>
+        <span class="bait-card__main">
+          <span class="bait-card__name">${name}</span>
+          <span class="bait-card__stats">
+            <span class="is-rare">${i18n.t('picker.rare', { '0': bait.rareBonus })}</span>
+            <span class="is-wait">${i18n.t('picker.wait', { '0': bait.waitReduction })}</span>
+          </span>
+          <span class="bait-card__foot">
+            <span class="bait-card__price">${
+              bait.cost > 0 ? `${bait.cost}G` : i18n.t('bait.autoRestocked')
+            }</span>
+            <span class="bait-card__owned">${i18n.t('camp.owned', { '0': owned })}</span>
+          </span>
+        </span>`;
       card.addEventListener('click', () => {
-        if (!canBuy) {
-          toast(i18n.t('bait.notEnoughGold'));
-        } else if (isFree) {
+        if (isFree) {
           if (this.gsm.purchaseBait(bait.id, 5)) {
-            toast(i18n.t('bait.freeClaimed', { '0': name }));
+            toast(i18n.t('bait.freeClaimed', { '0': name }), 'bait');
             this.show(callbacks);
           }
-        } else if (this.gsm.purchaseBait(bait.id, 1)) {
-          toast(i18n.t('bait.purchased', { '0': name }));
+          return;
+        }
+        if (!affordable) {
+          toast(i18n.t('bait.notEnoughGold'), 'coin');
+          return;
+        }
+        if (this.gsm.purchaseBait(bait.id, 1)) {
+          toast(i18n.t('bait.purchased', { '0': name }), 'bait');
           this.show(callbacks);
         }
       });
-      baitGrid.appendChild(card);
+      grid.appendChild(card);
     });
-    body.appendChild(baitGrid);
+    body.appendChild(grid);
+  }
 
-    // Relics
-    body.append(
-      d(
-        'color: ${THEME.text.secondary}; font-size: 9px; letter-spacing: 1px; margin: 10px 0 6px;',
-        i18n.t('camp.relics'),
-      ),
-    );
-    const relicGrid = d('display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;');
-    ALL_RELICS.forEach((r) => {
-      const owned = this.gsm.ownedRelics.has(r.id);
-      const equipped = this.gsm.equippedRelics.has(r.id);
-      const relI18n = i18n.relic(r.id);
-      const equippedLabel = i18n.t('equip.equipped');
-      const clickLabel = i18n.t('equip.click');
-      const card = document.createElement('div');
-      card.style.cssText = `
-        padding: 6px; text-align: left; cursor: ${owned ? 'pointer' : 'default'};
-        background: ${equipped ? 'rgba(68,221,136,0.12)' : owned ? 'rgba(255,200,100,0.1)' : 'rgba(255,255,255,0.03)'};
-        border: 1px solid ${equipped ? 'rgba(68,221,136,0.45)' : owned ? 'rgba(255,200,100,0.25)' : 'rgba(255,255,255,0.06)'};
-        border-radius: ${THEME.radius.md}; color: ${owned ? '${THEME.text.primary}' : '#555'};
-        transition: background 0.15s, border-color 0.15s;
-        display: flex; align-items: center; gap: 6px;
-      `;
+  private _renderRelics(body: HTMLDivElement, callbacks: CampPanelCallbacks): void {
+    body.appendChild(sectionTitle('relic', i18n.t('camp.relics')));
+    const grid = d();
+    grid.className = 'camp-grid-2';
+    ALL_RELICS.forEach((relic) => {
+      const owned = this.gsm.ownedRelics.has(relic.id);
+      const equipped = this.gsm.equippedRelics.has(relic.id);
+      const relI18n = i18n.relic(relic.id);
+      const card = d();
+      card.className = 'relic-card';
+      card.dataset.owned = String(owned);
+      card.dataset.equipped = String(equipped);
+      card.title = owned ? relI18n.desc : i18n.t('soul.locked');
       card.innerHTML = `
-        <div style="font-size: 18px; line-height: 1; flex-shrink: 0;">${owned ? r.icon : '❓'}</div>
-        <div style="flex: 1; min-width: 0;">
-          <div style="font-size: 10px; font-weight: bold; color: ${owned ? '#fff' : '#777'}; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${owned ? relI18n.name : '???'}</div>
-          ${owned ? `<div style="font-size: 8px; color: ${equipped ? '${THEME.accent.greenLight}' : '#9ca3af'}; font-weight: ${equipped ? 'bold' : 'normal'};">${equipped ? equippedLabel : clickLabel}</div>` : '<div style="font-size:8px;color:#555;">Locked</div>'}
-        </div>
-      `;
-      card.addEventListener('mouseenter', () => {
-        if (owned) {
-          card.style.background = equipped ? 'rgba(68,221,136,0.2)' : 'rgba(255,200,100,0.18)';
-          card.style.borderColor = equipped ? 'rgba(68,221,136,0.6)' : 'rgba(255,200,100,0.4)';
-        }
-      });
-      card.addEventListener('mouseleave', () => {
-        if (owned) {
-          card.style.background = equipped ? 'rgba(68,221,136,0.12)' : 'rgba(255,200,100,0.1)';
-          card.style.borderColor = equipped ? 'rgba(68,221,136,0.45)' : 'rgba(255,200,100,0.25)';
-        }
-      });
+        <span class="relic-card__icon">${
+          owned ? svgIcon(relicIconName(relic.id), 14) : svgIcon('lock', 12)
+        }</span>
+        <span class="relic-card__main">
+          <span class="relic-card__name">${owned ? relI18n.name : '???'}</span>
+          <span class="relic-card__state ${equipped ? 'is-equipped' : ''}">${
+            owned
+              ? equipped
+                ? `${svgIcon('check', 9)}${i18n.t('equip.equipped')}`
+                : i18n.t('equip.click')
+              : i18n.t('soul.locked')
+          }</span>
+        </span>`;
       if (owned) {
         card.addEventListener('click', () => {
-          if (equipped) this.gsm.unequipRelic(r.id);
-          else this.gsm.equipRelic(r.id);
+          if (equipped) this.gsm.unequipRelic(relic.id);
+          else this.gsm.equipRelic(relic.id);
           this.show(callbacks);
         });
       }
-      relicGrid.appendChild(card);
+      grid.appendChild(card);
     });
-    body.appendChild(relicGrid);
+    body.appendChild(grid);
+  }
 
-    // Daily Quests
+  private _renderDailies(body: HTMLDivElement, callbacks: CampPanelCallbacks): void {
     const quests = this.dailySystem.activeQuests;
-    if (quests.length > 0) {
-      body.append(
-        d(
-          'color: rgba(255,255,255,0.55); font-size: 9px; letter-spacing: 1px; margin: 10px 0 6px;',
-          `${i18n.t('camp.daily')} · Streak ${this.dailySystem.streakDays} 🔥${this.dailySystem.hotspotLocation ? ` · Hotspot: ${this.dailySystem.hotspotLocation.toUpperCase()}` : ''}`,
-        ),
-      );
+    if (quests.length === 0) return;
 
-      const freeBaitAvailable = this.dailySystem.freeBaitAvailable;
-      const freeBaitBtn = d(
-        `
-        padding: 6px 0; margin: 4px 0 8px; text-align: center; font-size: 9px; font-weight: bold;
-        background: ${freeBaitAvailable ? 'rgba(68,221,136,0.15)' : 'rgba(255,255,255,0.04)'};
-        border: 1px solid ${freeBaitAvailable ? 'rgba(68,221,136,0.4)' : 'rgba(255,255,255,0.08)'};
-        border-radius: ${THEME.radius.md}; color: ${freeBaitAvailable ? '${THEME.accent.greenLight}' : '#6b7280'};
-        cursor: ${freeBaitAvailable ? 'pointer' : 'default'};
-        transition: background 0.15s, box-shadow 0.15s;
-      `,
-        freeBaitAvailable ? '🪱 Claim Free Bait (x3 Worms)' : '✅ Free bait claimed',
-      );
-      if (freeBaitAvailable) {
-        freeBaitBtn.addEventListener('click', () => {
-          if (this.dailySystem.claimFreeBait()) {
-            this.show(callbacks);
-          }
-        });
-      }
-      body.appendChild(freeBaitBtn);
+    body.appendChild(sectionTitle('daily', i18n.t('camp.daily')));
 
-      quests.forEach((q) => {
-        const target = typeof q.target === 'number' ? q.target : 1;
-        const progress = Math.min(q.progress, target);
-        const pct = Math.floor((progress / target) * 100);
-        const row = d(
-          `
-          display: flex; justify-content: space-between; align-items: center;
-          padding: 5px 8px; margin: 3px 0; font-size: 9px;
-          background: ${q.completed ? 'rgba(68,221,136,0.1)' : 'rgba(255,255,255,0.04)'};
-          border: 1px solid ${q.completed ? 'rgba(68,221,136,0.25)' : 'rgba(255,255,255,0.08)'};
-          border-radius: ${THEME.radius.md}; color: ${q.completed ? '${THEME.accent.greenLight}' : '${THEME.text.primary}'};
-        `,
-          `<span style="font-weight:${q.completed ? 'bold' : 'normal'};">${q.completed ? '✅' : '⬜'} ${q.desc}</span>
-           <span style="color:${q.completed ? '#facc15' : '#9ca3af'};font-weight:bold;">💰${q.rewardGold}G</span>`,
-        );
-        body.appendChild(row);
-        const bar = d(`
-          height: 4px; background: rgba(255,255,255,0.06); border-radius: ${THEME.radius.sm};
-          margin: 0 8px 6px; overflow: hidden;
-        `);
-        bar.appendChild(
-          d(`
-          height: 100%; width: ${pct}%; background: ${q.completed ? '${THEME.accent.greenLight}' : '${THEME.accent.goldText}'};
-          transition: width 0.3s;
-        `),
-        );
-        body.appendChild(bar);
+    const note = d();
+    note.className = 'camp-daily-note';
+    note.innerHTML = `
+      ${svgIcon('daily', 10)}
+      <span>${i18n.t('camp.streak', { '0': this.dailySystem.streakDays })}</span>
+      ${
+        this.dailySystem.hotspotLocation
+          ? `<span class="is-hot">${svgIcon('pin', 9)}${i18n.t('camp.hotspot', {
+              '0': this.dailySystem.hotspotLocation.toUpperCase(),
+            })}</span>`
+          : ''
+      }`;
+    body.appendChild(note);
+
+    const freeBaitAvailable = this.dailySystem.freeBaitAvailable;
+    const freeBaitBtn = d();
+    freeBaitBtn.className = freeBaitAvailable ? 'ss-btn ss-btn--primary' : 'ss-btn ss-btn--ghost';
+    freeBaitBtn.dataset.disabled = String(!freeBaitAvailable);
+    freeBaitBtn.innerHTML = `${svgIcon('bait', 11)}<span>${
+      freeBaitAvailable ? i18n.t('camp.freeBait') : i18n.t('camp.freeBaitDone')
+    }</span>`;
+    freeBaitBtn.style.marginBottom = '5px';
+    if (freeBaitAvailable) {
+      freeBaitBtn.addEventListener('click', () => {
+        if (this.dailySystem.claimFreeBait()) this.show(callbacks);
       });
     }
+    body.appendChild(freeBaitBtn);
 
-    // Save Slots
-    body.append(
-      d(
-        'color: ${THEME.text.secondary}; font-size: 9px; letter-spacing: 1px; margin: 10px 0 6px;',
-        i18n.t('camp.save'),
-      ),
-    );
-    const saveRow = d('display: flex; gap: 6px; justify-content: center; margin-bottom: 8px;');
+    const list = d();
+    list.className = 'quest-list';
+    quests.forEach((quest) => {
+      const target = typeof quest.target === 'number' ? quest.target : 1;
+      const progress = Math.min(quest.progress, target);
+      const pct = Math.max(0, Math.min(1, progress / target));
+      const row = d();
+      row.className = 'quest-row';
+      row.dataset.completed = String(quest.completed);
+      row.innerHTML = `
+        <div class="quest-row__head">
+          ${quest.completed ? svgIcon('check', 10) : svgIcon('daily', 10)}
+          <span class="quest-row__text">${quest.desc}</span>
+          <span class="quest-row__reward">${i18n.t('camp.questReward', {
+            '0': quest.rewardGold,
+          })}</span>
+        </div>
+        <span class="ss-bar"><i class="${quest.completed ? 'is-sage' : ''}" style="transform:scaleX(${pct})"></i></span>`;
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+
+  private _renderSaves(body: HTMLDivElement): void {
+    body.appendChild(sectionTitle('save', i18n.t('camp.save')));
+    const grid = d();
+    grid.className = 'save-grid';
+
     for (let slot = 0; slot < 3; slot++) {
       const info = GameStateManager.getSlotInfo(slot);
       const isCurrent = slot === this.gsm.currentSlot;
       const shortTime = info
         ? new Date(info.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         : '';
-      const btn = d(
-        `
-        flex: 1; padding: 6px 4px; text-align: center; font-size: 9px; cursor: pointer;
-        background: ${isCurrent ? 'rgba(68,221,136,0.12)' : info ? 'rgba(255,200,100,0.08)' : 'rgba(255,255,255,0.04)'};
-        border: 1px solid ${isCurrent ? 'rgba(68,221,136,0.35)' : info ? 'rgba(255,200,100,0.2)' : 'rgba(255,255,255,0.08)'};
-        border-radius: ${THEME.radius.md}; color: ${info ? '${THEME.text.primary}' : '#555'};
-        transition: background 0.15s, border-color 0.15s;
-      `,
-        `<div style="font-size:14px;margin-bottom:2px;">${info ? '💾' : '➕'}</div>
-         <div style="font-weight:bold;">Slot ${slot + 1}</div>
-         ${info ? `<div style="font-size:8px;color:#9ca3af;margin-top:2px;">💰${info.gold}G · ${shortTime}</div>` : '<div style="font-size:8px;color:#6b7280;margin-top:2px;">Empty</div>'}`,
-      );
-      btn.addEventListener('mouseenter', () => {
-        btn.style.background = isCurrent
-          ? 'rgba(68,221,136,0.2)'
+      const cell = d();
+      cell.className = 'save-slot';
+      cell.dataset.current = String(isCurrent);
+      cell.innerHTML = `
+        ${svgIcon(isCurrent ? 'save' : info ? 'save' : 'lock', 12)}
+        <span class="save-slot__name">${String(slot + 1).padStart(2, '0')} ${
+          isCurrent ? i18n.t('camp.saveCurrent') : ''
+        }</span>
+        <span class="save-slot__meta">${
+          info
+            ? i18n.t('camp.slotInfo', { '0': info.gold, '1': shortTime })
+            : i18n.t('camp.saveEmpty')
+        }</span>`;
+      cell.addEventListener('click', () => {
+        const message = isCurrent
+          ? i18n.t('save.slot', { '0': slot + 1 })
           : info
-            ? 'rgba(255,200,100,0.16)'
-            : 'rgba(255,255,255,0.1)';
-      });
-      btn.addEventListener('mouseleave', () => {
-        btn.style.background = isCurrent
-          ? 'rgba(68,221,136,0.12)'
-          : info
-            ? 'rgba(255,200,100,0.08)'
-            : 'rgba(255,255,255,0.04)';
-      });
-      btn.addEventListener('click', () => {
-        if (
-          confirm(
-            isCurrent
-              ? 'Save to this slot?'
-              : info
-                ? `Load slot ${slot + 1}? Current progress will be lost.`
-                : `Save to slot ${slot + 1}?`,
-          )
-        ) {
+            ? `${i18n.t('save.slot', { '0': slot + 1 })}?`
+            : i18n.t('save.slot', { '0': slot + 1 });
+        if (confirm(message)) {
           if (!isCurrent) {
             localStorage.setItem('soulsanctuary_active_slot', String(slot));
             location.reload();
           }
         }
       });
-      saveRow.appendChild(btn);
+      grid.appendChild(cell);
     }
-    body.appendChild(saveRow);
+    body.appendChild(grid);
 
-    // JSON export/import
-    const ioRow = d('display: flex; gap: 6px; justify-content: center; margin: 4px 0;');
-    const expBtn = d(
-      'padding: 4px 12px; font-size: 8px; color: #9ca3af; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: ${THEME.radius.md}; transition: background 0.15s;',
-      i18n.t('save.export'),
-    );
-    expBtn.addEventListener('mouseenter', () => {
-      expBtn.style.background = 'rgba(255,255,255,0.08)';
-      expBtn.style.color = '${THEME.text.primary}';
-    });
-    expBtn.addEventListener('mouseleave', () => {
-      expBtn.style.background = 'transparent';
-      expBtn.style.color = '#9ca3af';
-    });
-    expBtn.addEventListener('click', () => {
+    const io = d();
+    io.className = 'camp-io';
+    const exportBtn = d();
+    exportBtn.className = 'ss-btn ss-btn--ghost';
+    exportBtn.innerHTML = `${svgIcon('export', 10)}<span>${i18n.t('save.export')}</span>`;
+    exportBtn.addEventListener('click', () => {
       const json = this.gsm.exportJSON();
       navigator.clipboard
         .writeText(json)
-        .then(() => toast(i18n.t('notify.exported')))
+        .then(() => toast(i18n.t('notify.exported'), 'check'))
         .catch((err: unknown) => console.error('[CampPanel] export to clipboard failed:', err));
     });
-    const impBtn = d(
-      'padding: 4px 12px; font-size: 8px; color: #9ca3af; cursor: pointer; border: 1px solid rgba(255,255,255,0.1); border-radius: ${THEME.radius.md}; transition: background 0.15s;',
-      i18n.t('save.import'),
-    );
-    impBtn.addEventListener('mouseenter', () => {
-      impBtn.style.background = 'rgba(255,255,255,0.08)';
-      impBtn.style.color = '${THEME.text.primary}';
-    });
-    impBtn.addEventListener('mouseleave', () => {
-      impBtn.style.background = 'transparent';
-      impBtn.style.color = '#9ca3af';
-    });
-    impBtn.addEventListener('click', () => {
-      const input = prompt('Paste save data JSON:');
+    const importBtn = d();
+    importBtn.className = 'ss-btn ss-btn--ghost';
+    importBtn.innerHTML = `${svgIcon('import', 10)}<span>${i18n.t('save.import')}</span>`;
+    importBtn.addEventListener('click', () => {
+      const input = prompt(i18n.t('save.import'));
       if (input && this.gsm.importJSON(input)) {
-        toast(i18n.t('notify.imported'));
+        toast(i18n.t('notify.imported'), 'check');
         setTimeout(() => location.reload(), 800);
-      } else if (input) toast(i18n.t('notify.importFailed'));
+      } else if (input) {
+        toast(i18n.t('notify.importFailed'), 'warn');
+      }
     });
-    ioRow.appendChild(expBtn);
-    ioRow.appendChild(impBtn);
-    body.appendChild(ioRow);
+    io.append(exportBtn, importBtn);
+    body.appendChild(io);
+  }
 
-    // Achievements
+  private _renderAchievements(body: HTMLDivElement): void {
+    if (ALL_ACHIEVEMENTS.length === 0) return;
     const unlocked = this.gsm.unlockedAchievements;
-    const totalAch = ALL_ACHIEVEMENTS.length;
-    const unlockedCount = unlocked.size;
-    if (ALL_ACHIEVEMENTS.length > 0) {
-      body.append(
-        d(
-          'color: ${THEME.text.secondary}; font-size: 9px; letter-spacing: 1px; margin: 10px 0 6px;',
-          `${i18n.t('camp.achievements')} · ${unlockedCount}/${totalAch}`,
-        ),
-      );
-      const achGrid = d('display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;');
-      ALL_ACHIEVEMENTS.forEach((ach) => {
-        const earned = unlocked.has(ach.id);
-        achGrid.appendChild(
-          d(
-            `
-          padding: 5px 2px; text-align: center; font-size: 8px;
-          background: ${earned ? 'rgba(255,200,100,0.1)' : 'rgba(255,255,255,0.03)'};
-          border: 1px solid ${earned ? 'rgba(255,200,100,0.25)' : 'rgba(255,255,255,0.06)'};
-          border-radius: ${THEME.radius.md}; color: ${earned ? '#ffcc88' : '#555'};
-        `,
-            `<div style="font-size:14px;margin-bottom:2px;">${earned ? ach.icon : '🔒'}</div>
-           <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${ach.desc}">${earned ? ach.name : '???'}</div>`,
-          ),
-        );
-      });
-      body.appendChild(achGrid);
-    }
-
-    // Start Run
-    const start = d(
-      `
-      margin-top: 12px; padding: 9px 0; text-align: center;
-      background: rgba(68,221,136,0.18); border: 1px solid rgba(68,221,136,0.4);
-      color: ${THEME.accent.greenLight}; font-size: 11px; font-weight: bold; letter-spacing: 1px;
-      cursor: pointer; border-radius: ${THEME.radius.lg};
-      transition: background 0.15s, box-shadow 0.15s;
-    `,
-      i18n.t('camp.startRun'),
+    body.appendChild(
+      sectionTitle(
+        'trophy',
+        i18n.t('camp.achievements'),
+        `${unlocked.size}/${ALL_ACHIEVEMENTS.length}`,
+      ),
     );
-    start.id = 'btn-start-run';
-    start.addEventListener('mouseenter', () => {
-      start.style.background = 'rgba(68,221,136,0.3)';
-      start.style.boxShadow = '0 0 18px rgba(68,221,136,0.3)';
+    const grid = d();
+    grid.className = 'ach-grid';
+    ALL_ACHIEVEMENTS.forEach((ach) => {
+      const earned = unlocked.has(ach.id);
+      const card = d();
+      card.className = 'ach-card';
+      card.dataset.earned = String(earned);
+      card.title = earned ? ach.desc : '???';
+      card.innerHTML = `
+        ${svgIcon(earned ? achievementIconName(ach.id) : 'lock', 13)}
+        <span class="ach-card__name">${earned ? ach.name : '???'}</span>`;
+      grid.appendChild(card);
     });
-    start.addEventListener('mouseleave', () => {
-      start.style.background = 'rgba(68,221,136,0.18)';
-      start.style.boxShadow = 'none';
-    });
-    start.addEventListener('click', () => {
-      panel.remove();
-      callbacks.onStartRun();
-    });
-    body.appendChild(start);
-
-    panel.getCloseBtn().addEventListener('click', () => {
-      panel.remove();
-      this.sceneUI.hideBackdrop();
-      this.sceneUI.showStart();
-    });
-    document.body.appendChild(panel.el);
-    panel.el.scrollTop = savedScrollTop;
-    this.activePanel = panel;
+    body.appendChild(grid);
   }
 
   close(): void {

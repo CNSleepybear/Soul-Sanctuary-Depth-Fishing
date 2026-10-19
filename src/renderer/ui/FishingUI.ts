@@ -1,18 +1,33 @@
 // ===== src/renderer/ui/FishingUI.ts =====
-// DOM overlay system for fishing HUD: cast power bar, tension bar,
-// hook indicator, catch result popup, notifications.
+// In-run fishing feedback overlay: cast power (with depth zones), three-zone
+// tension gauge with line-break warning, reel progress, bite prompt, catch /
+// escape / line-break feedback, charm-proc hints and the resource strip.
+//
+// Layout keeps the centre of the 400x300 window clear: gauges hug the side
+// edges, cast + status text sit on the bottom strip, catch cards are transient.
+// Per-frame updates only write transforms / class names — never read layout.
 
 import { EventBus } from '../core/EventBus';
 import { GameEvents } from '../../shared/events';
 import { i18n } from '../i18n/I18n';
-import { LOCATIONS } from '../data/location-data';
 import { CatchQuality, FishRarity } from '../../shared/enums';
 import { BALANCE } from '../../shared/constants';
-import { THEME } from './theme';
-import type { SpiritFish } from '../../shared/types';
+import { THEME, rarityColor } from './theme';
+import { svgIcon } from './icons';
+import type { IconName } from './icons';
+import type { SpiritFish, Modifier } from '../../shared/types';
+
+type CastZone = 'surface' | 'mid' | 'deep' | 'over';
+
+interface ResourceDetail {
+  casts?: number;
+  gold?: number;
+  essence?: number;
+  runGold?: number;
+}
 
 export class FishingUI {
-  // EXT-7: Global fishpedia count for catch popup display
+  /** Global fishpedia count, mirrored from GameStateManager events. */
   static fishpediaCount = 0;
 
   private static readonly notificationTimers = new WeakMap<HTMLDivElement, number>();
@@ -20,332 +35,179 @@ export class FishingUI {
   private eventBus: EventBus;
   private container: HTMLDivElement;
 
-  // UI element refs
-  private _themeColor = '#44dd88';
-  private castBar: HTMLDivElement | null = null;
-  private castFill: HTMLDivElement | null = null;
-  private tensionBar: HTMLDivElement | null = null;
-  private tensionFill: HTMLDivElement | null = null;
-  private tensionMarker: HTMLDivElement | null = null;
-  private progressBar: HTMLDivElement | null = null;
-  private progressFill: HTMLDivElement | null = null;
-  private fishNameLabel: HTMLDivElement | null = null;
-  private hookIndicator: HTMLDivElement | null = null;
-  private hookTimer: HTMLDivElement | null = null;
-  private catchPopup: HTMLDivElement | null = null;
-  private notification: HTMLDivElement | null = null;
+  private castBar: HTMLDivElement;
+  private castFill: HTMLDivElement;
+  private castLabel: HTMLDivElement;
+  private castZoneLabel: HTMLDivElement;
+  private tensionBar: HTMLDivElement;
+  private tensionFill: HTMLDivElement;
+  private tensionMarker: HTMLDivElement;
+  private tensionValue: HTMLDivElement;
+  private progressBar: HTMLDivElement;
+  private progressFill: HTMLDivElement;
+  private progressValue: HTMLDivElement;
+  private fishNameLabel: HTMLDivElement;
+  private behaviorLabel: HTMLDivElement;
+  private waitingIndicator: HTMLDivElement;
+  private probeLabel: HTMLDivElement;
+  private hookIndicator: HTMLDivElement;
+  private hookTimerFill: HTMLDivElement;
+  private catchPopup: HTMLDivElement;
+  private notification: HTMLDivElement;
+  private idleHint: HTMLDivElement;
+  private charmProc: HTMLDivElement;
+  private biteGlow: HTMLDivElement;
+  private mythicGlow: HTMLDivElement;
+  private resources: HTMLDivElement;
 
   private unsubs: (() => void)[] = [];
+  private resourceHandler: ((e: Event) => void) | null = null;
+
+  private _castZone: CastZone | null = null;
+  private _probeShown = -1;
+  private _tensionShown = -1;
+  private _progressShown = -1;
+  private hookStartTime = 0;
+  private hookDurationMs = 1200;
+  private _failTipIndex = 0;
+  private _fishName = '';
+  private _behaviorType = '';
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
     this.container = document.createElement('div');
     this.container.id = 'fishing-ui';
-    this.container.style.cssText = `
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-      pointer-events: none; z-index: 50;
-      font-family: ${THEME.panel.font};
-    `;
     document.body.appendChild(this.container);
 
-    this._buildUI();
+    // ══ Cast power bar ══
+    this.castBar = this._createDiv('cast-bar');
+    this.castFill = this._createDiv('cast-fill');
+    this.castBar.appendChild(this.castFill);
+    const overshoot = this._createDiv('cast-overshoot');
+    overshoot.style.left = `${BALANCE.castOvershootThreshold * 100}%`;
+    this.castBar.appendChild(overshoot);
+    this.castLabel = this._createDiv('cast-label');
+    this.castLabel.textContent = i18n.t('fishing.holdToCast');
+    this.castBar.appendChild(this.castLabel);
+    this.castZoneLabel = this._createDiv('cast-zone');
+    this.castBar.appendChild(this.castZoneLabel);
+    this.container.appendChild(this.castBar);
+
+    // ══ Tension gauge (right) ══
+    this.tensionBar = this._createDiv('tension-bar');
+    const greenZone = this._createDiv('tension-zone-green');
+    const yellowZone = this._createDiv('tension-zone-yellow');
+    const redZone = this._createDiv('tension-zone-red');
+    this.tensionBar.append(greenZone, yellowZone, redZone);
+    this.tensionFill = this._createDiv('tension-fill');
+    this.tensionBar.appendChild(this.tensionFill);
+    this.tensionMarker = this._createDiv('tension-marker');
+    this.tensionBar.appendChild(this.tensionMarker);
+    const tensionLabel = this._createDiv('tension-label');
+    tensionLabel.textContent = i18n.t('hud.tension');
+    this.tensionBar.appendChild(tensionLabel);
+    this.tensionValue = this._createDiv('tension-value');
+    this.tensionValue.textContent = '0';
+    this.tensionBar.appendChild(this.tensionValue);
+    const tensionWarn = document.createElement('div');
+    tensionWarn.id = 'tension-warn';
+    tensionWarn.innerHTML = `${svgIcon('warn', 10)}<span>${i18n.t('fishing.lineWarn')}</span>`;
+    this.tensionBar.appendChild(tensionWarn);
+    this.container.appendChild(this.tensionBar);
+
+    // ══ Reel progress gauge (left) ══
+    this.progressBar = this._createDiv('progress-bar');
+    this.progressFill = this._createDiv('progress-fill');
+    this.progressBar.appendChild(this.progressFill);
+    const progressLabel = this._createDiv('progress-label');
+    progressLabel.textContent = i18n.t('fishing.catch');
+    this.progressBar.appendChild(progressLabel);
+    this.progressValue = this._createDiv('progress-value');
+    this.progressValue.textContent = '0';
+    this.progressBar.appendChild(this.progressValue);
+    this.container.appendChild(this.progressBar);
+
+    // ══ Reel info chips ══
+    this.fishNameLabel = this._createDiv('fish-name-label');
+    this.container.appendChild(this.fishNameLabel);
+    this.behaviorLabel = this._createDiv('behavior-label');
+    this.container.appendChild(this.behaviorLabel);
+
+    // ══ Waiting / probe state ══
+    this.waitingIndicator = this._createDiv('waiting-indicator');
+    this.waitingIndicator.textContent = i18n.t('fishing.waitShort');
+    this.container.appendChild(this.waitingIndicator);
+    this.probeLabel = this._createDiv('probe-label');
+    this.container.appendChild(this.probeLabel);
+
+    // ══ Bite prompt ══
+    this.hookIndicator = this._createDiv('hook-indicator');
+    this.hookIndicator.innerHTML = `
+      <span class="hook-icon">${svgIcon('hook', 15)}</span>
+      <span class="hook-text">${i18n.t('fishing.bite')}</span>
+      <span class="hook-sub">${i18n.t('fishing.clickNow')}</span>
+      <span id="hook-timer"><i id="hook-timer-fill"></i></span>`;
+    this.hookTimerFill = this.hookIndicator.querySelector('#hook-timer-fill') as HTMLDivElement;
+    this.container.appendChild(this.hookIndicator);
+
+    // ══ Notification + charm proc + idle hint ══
+    this.notification = this._createDiv('notification');
+    this.container.appendChild(this.notification);
+
+    this.charmProc = this._createDiv('charm-proc');
+    this.container.appendChild(this.charmProc);
+
+    this.idleHint = this._createDiv('idle-hint');
+    this.idleHint.textContent = i18n.t('fishing.clickToCast');
+    this.container.appendChild(this.idleHint);
+
+    // ══ Resource strip (casts / gold, mirror of the run HUD) ══
+    this.resources = this._createDiv('fishing-res');
+    this.container.appendChild(this.resources);
+
+    // ══ Fullscreen feedback layers ══
+    this.biteGlow = this._createDiv('bite-glow');
+    this.container.appendChild(this.biteGlow);
+    this.mythicGlow = this._createDiv('mythic-glow');
+    this.container.appendChild(this.mythicGlow);
+
+    // ══ Catch card (body-level so it sits above the scene UI) ══
+    this.catchPopup = this._createDiv('catch-popup');
+    document.body.appendChild(this.catchPopup);
+
     this._subscribe();
 
-    // EXT-7: listen for fishpedia count updates from GameStateManager
     this.unsubs.push(
       this.eventBus.on(GameEvents.GAME_FISHPEDIA_COUNT_UPDATE, (p) => {
         FishingUI.fishpediaCount = p.count;
       }),
     );
 
-    // REF-4: adapt UI accent to current location theme
-    this.unsubs.push(
-      this.eventBus.on(GameEvents.GAME_LOCATION_CHANGE, (p) => {
-        const loc = this._findLocation(p.locationId);
-        if (loc?.theme) {
-          this._themeColor = '#' + loc.theme.uiAccent.toString(16).padStart(6, '0');
-          this._applyThemeColor();
-        }
-      }),
-    );
+    // RunUI broadcasts a compact resource snapshot for the bottom strip.
+    this.resourceHandler = (e: Event) => {
+      if (!(e instanceof CustomEvent)) return;
+      this._renderResources(e.detail as ResourceDetail | undefined);
+    };
+    document.addEventListener('soul:resources', this.resourceHandler);
   }
 
-  private _findLocation(id: string) {
-    return LOCATIONS.find((l) => l.id === id);
+  // ══ Construction helpers ══
+
+  private _createDiv(id: string): HTMLDivElement {
+    const div = document.createElement('div');
+    div.id = id;
+    return div;
   }
-
-  private _applyThemeColor(): void {
-    if (this.castFill)
-      this.castFill.style.background = `linear-gradient(90deg, ${this._themeColor}, #ffcc00)`;
-    if (this.progressFill)
-      this.progressFill.style.background = `linear-gradient(180deg, ${this._themeColor}, #2288cc)`;
-  }
-
-  // ── Build all DOM elements ──
-
-  private _buildUI(): void {
-    // ══ Cast Power Bar (bottom center) ══
-    this.castBar = this._createDiv('cast-bar');
-    this.castBar.style.cssText = `
-      position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-      width: 200px; height: 12px;
-      background: rgba(255,255,255,0.08);
-      border: 1px solid ${THEME.border.strong};
-      display: none;
-      border-radius: ${THEME.radius.sm};
-    `;
-    this.castFill = this._createDiv('cast-fill');
-    this.castFill.style.cssText = `
-      height: 100%; width: 0%;
-      background: linear-gradient(90deg, ${THEME.accent.green}, ${THEME.accent.yellow}, ${THEME.accent.red});
-      transition: width 0.05s linear;
-    `;
-    this.castBar.appendChild(this.castFill);
-
-    // Overshoot marker
-    const overshootMarker = this._createDiv('cast-overshoot');
-    overshootMarker.style.cssText = `
-      position: absolute; top: 0; height: 100%; width: 2px;
-      left: ${BALANCE.castOvershootThreshold * 100}%;
-      background: rgba(255,80,80,0.6);
-    `;
-    this.castBar.appendChild(overshootMarker);
-
-    // Cast label
-    const castLabel = this._createDiv('cast-label');
-    castLabel.style.cssText = `
-      position: absolute; bottom: 16px; left: 0; right: 0;
-      text-align: center; color: #f0f0f0;
-      font-size: 9px; letter-spacing: 1px;
-      text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5);
-    `;
-    castLabel.textContent = i18n.t('fishing.holdToCast');
-    this.castBar.appendChild(castLabel);
-
-    this.container.appendChild(this.castBar);
-
-    // ══ Progress Bar (left side — mirror of tension) ══
-    this.progressBar = this._createDiv('progress-bar');
-    this.progressBar.style.cssText = `
-      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-      width: 8px; height: 160px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid ${THEME.border.strong};
-      border-radius: ${THEME.radius.sm};
-      display: none;
-    `;
-    this.progressFill = this._createDiv('progress-fill');
-    this.progressFill.style.cssText = `
-      position: absolute; left: 1px; right: 1px; bottom: 1px;
-      height: 0%;
-      background: linear-gradient(180deg, ${this._themeColor}, ${THEME.accent.cyan});
-      border-radius: ${THEME.radius.md}; box-shadow: 0 0 6px rgba(68,170,255,0.3);
-      transition: height 0.15s linear;
-    `;
-    this.progressBar.appendChild(this.progressFill);
-    const progLabel = this._createDiv('progress-label');
-    progLabel.style.cssText = `
-      position: absolute; top: -18px; left: 0; right: 0;
-      text-align: center; color: #f0f0f0;
-      font-size: 8px; letter-spacing: 1px;
-      text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5);
-    `;
-    progLabel.textContent = i18n.t('fishing.catch');
-    this.progressBar.appendChild(progLabel);
-    this.container.appendChild(this.progressBar);
-
-    // Fish name during reel
-    this.fishNameLabel = this._createDiv('fish-name-label');
-    this.fishNameLabel.style.cssText = `
-      position: absolute; top: 28%; left: 50%; transform: translateX(-50%);
-      color: #ffffff; font-size: 11px; letter-spacing: 1px; font-weight: bold;
-      display: none; pointer-events: none; text-align: center;
-      text-shadow: 0 0 4px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.6);
-    `;
-    this.container.appendChild(this.fishNameLabel);
-
-    // ══ Tension Bar (right side) ══
-    this.tensionBar = this._createDiv('tension-bar');
-    this.tensionBar.style.cssText = `
-      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-      width: 8px; height: 160px;
-      background: rgba(255,255,255,0.06);
-      border: 1px solid ${THEME.border.strong};
-      border-radius: ${THEME.radius.sm};
-      display: none;
-    `;
-
-    // Green zone
-    const greenZone = this._createDiv('tension-zone-green');
-    greenZone.style.cssText = `
-      position: absolute; left: 0; right: 0;
-      bottom: 0; height: ${BALANCE.tensionGreenMax}%;
-      background: rgba(68,221,136,0.15);
-      border-radius: 0 0 ${THEME.radius.md} ${THEME.radius.md};
-    `;
-    this.tensionBar.appendChild(greenZone);
-
-    // Yellow zone
-    const yellowZone = this._createDiv('tension-zone-yellow');
-    yellowZone.style.cssText = `
-      position: absolute; left: 0; right: 0;
-      bottom: ${BALANCE.tensionGreenMax}%;
-      height: ${BALANCE.tensionYellowMax - BALANCE.tensionGreenMax}%;
-      background: rgba(255,204,0,0.12);
-    `;
-    this.tensionBar.appendChild(yellowZone);
-
-    // Red zone
-    const redZone = this._createDiv('tension-zone-red');
-    redZone.style.cssText = `
-      position: absolute; left: 0; right: 0;
-      bottom: ${BALANCE.tensionYellowMax}%;
-      height: ${100 - BALANCE.tensionYellowMax}%;
-      background: rgba(255,68,68,0.12);
-      border-radius: ${THEME.radius.md} ${THEME.radius.md} 0 0;
-    `;
-    this.tensionBar.appendChild(redZone);
-
-    this.tensionFill = this._createDiv('tension-fill');
-    this.tensionFill.style.cssText = `
-      position: absolute; left: 1px; right: 1px; bottom: 1px;
-      height: 0%;
-      background: ${THEME.accent.green};
-      border-radius: ${THEME.radius.md}; box-shadow: 0 0 4px rgba(68,221,136,0.2);
-      transition: height 0.1s linear;
-    `;
-    this.tensionBar.appendChild(this.tensionFill);
-
-    this.tensionMarker = this._createDiv('tension-marker');
-    this.tensionMarker.style.cssText = `
-      position: absolute; left: -2px; right: -2px;
-      height: 3px;
-      background: #ffffff;
-      border-radius: 2px;
-      transition: bottom 0.1s linear;
-    `;
-    this.tensionBar.appendChild(this.tensionMarker);
-
-    // Label
-    const tensionLabel = this._createDiv('tension-label');
-    tensionLabel.style.cssText = `
-      position: absolute; top: -18px; left: 0; right: 0;
-      text-align: center; color: #f0f0f0;
-      font-size: 8px; letter-spacing: 1px;
-      text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5);
-    `;
-    tensionLabel.textContent = i18n.t('fishing.tension');
-    this.tensionBar.appendChild(tensionLabel);
-
-    this.container.appendChild(this.tensionBar);
-
-    // ══ Hook Indicator (center) ══
-    this.hookIndicator = this._createDiv('hook-indicator');
-    this.hookIndicator.style.cssText = `
-      position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%);
-      padding: 10px 28px;
-      background: rgba(255,50,50,0.92);
-      border: 2px solid rgba(255,150,150,0.7);
-      color: ${THEME.text.white}; font-size: 20px; font-weight: bold;
-      letter-spacing: 3px; text-align: center;
-      display: none; pointer-events: none;
-      border-radius: ${THEME.radius.sm};
-      animation: hook-pulse 0.4s ease-in-out infinite;
-    `;
-    this.hookIndicator.textContent = i18n.t('fishing.click');
-    this.hookTimer = this._createDiv('hook-timer');
-    this.hookTimer.style.cssText = `
-      position: absolute; bottom: -24px; left: 0; right: 0;
-      height: 4px; background: rgba(255,255,255,0.15);
-      border-radius: ${THEME.radius.sm}; overflow: hidden;
-    `;
-    const hookTimerFill = this._createDiv('hook-timer-fill');
-    hookTimerFill.style.cssText = `
-      height: 100%; width: 100%; background: ${THEME.accent.redLight};
-      border-radius: ${THEME.radius.sm}; transition: width 0.1s linear;
-    `;
-    hookTimerFill.id = 'hook-timer-fill';
-    this.hookTimer.appendChild(hookTimerFill);
-    this.hookIndicator.appendChild(this.hookTimer);
-    this.container.appendChild(this.hookIndicator);
-
-    // ══ Catch Result Popup ─═
-    this.catchPopup = this._createDiv('catch-popup');
-    this.catchPopup.style.cssText = `
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      padding: 16px 32px;
-      background: rgba(0,0,0,0.92);
-      border: 1px solid rgba(255,255,255,0.35);
-      color: ${THEME.text.primary}; text-align: center;
-      display: none; min-width: 200px;
-      pointer-events: none;
-      border-radius: ${THEME.radius.sm};
-      z-index: 400;
-    `;
-    document.body.appendChild(this.catchPopup);
-
-    // ══ Notification ─═
-    this.notification = this._createDiv('notification');
-    this.notification.style.cssText = `
-      position: absolute; top: 38px; left: 50%; transform: translateX(-50%);
-      padding: 5px 16px;
-      background: rgba(0,0,0,0.88);
-      border: 1px solid rgba(255,255,255,0.18);
-      color: ${THEME.text.white}; font-size: 10px; letter-spacing: 1px; font-weight: bold;
-      opacity: 0; transition: opacity 0.3s ease;
-      border-radius: ${THEME.radius.md};
-    `;
-    this.container.appendChild(this.notification);
-
-    // ── Hook pulse + mythic glow animations ──
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes hook-pulse {
-        0%, 100% { transform: translate(-50%, -50%) scale(1); }
-        50% { transform: translate(-50%, -50%) scale(1.08); }
-      }
-      @keyframes mythic-pulse {
-        0%, 100% { opacity: 0.2; }
-        50% { opacity: 0.6; }
-      }
-      @keyframes float-gold {
-        0% { opacity: 1; transform: translate(-50%, -50%) scale(0.8); }
-        20% { transform: translate(-50%, -60%) scale(1.1); }
-        100% { opacity: 0; transform: translate(-50%, -120%) scale(1); }
-      }
-    `;
-    document.head.appendChild(style);
-
-    // ══ Idle hint ══
-    const idleHint = this._createDiv('idle-hint');
-    idleHint.style.cssText = `
-      position: absolute; bottom: 55px; left: 50%; transform: translateX(-50%);
-      color: #f0f0f0; font-size: 9px; letter-spacing: 1px;
-      pointer-events: none;
-      text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5);
-    `;
-    idleHint.textContent = i18n.t('fishing.clickToCast');
-    this.container.appendChild(idleHint);
-  }
-
-  // ── Event subscriptions ──
-
-  private waitingIndicator: HTMLDivElement | null = null;
-  // EXT-5: Probe count label shown during waiting
-  private probeLabel: HTMLDivElement | null = null;
-  // POLISH-1: Window border glow element for bite alerts
-  private biteGlow: HTMLDivElement | null = null;
 
   private _subscribe(): void {
     this.unsubs.push(
       this.eventBus.on(GameEvents.FISHING_NIBBLE, () =>
-        this._showNotification(i18n.t('fishing.nibble'), 'info'),
+        this._showNotification(i18n.t('fishing.nibble')),
       ),
       this.eventBus.on(GameEvents.FISHING_BITE, (p) => {
         this._hideWaiting();
         if (p.hookWindowMs) this.setHookDuration(p.hookWindowMs);
         this._showHookIndicator();
-        // POLISH-1: Window border glow on bite
         this._triggerBiteGlow();
       }),
       this.eventBus.on(GameEvents.FISHING_HOOK_SET, (p) => {
@@ -353,24 +215,26 @@ export class FishingUI {
         this._showFishName(p.fish);
       }),
       this.eventBus.on(GameEvents.FISHING_REEL_UPDATE, (p) => {
-        this._updateTensionBar(p.tension);
-        this._updateProgressBar(p.fishProgress);
-        this._updateBehaviorLabel(p.fish);
+        this._setTension(p.tension);
+        this._setProgress(p.fishProgress);
+        this._showFishName(p.fish);
+        this._setBehavior(p.fish);
       }),
       this.eventBus.on(GameEvents.FISHING_BURST, () => this._flashTensionBar()),
-      this.eventBus.on(GameEvents.FISHING_CATCH, () => {
-        this._hideWaiting();
-      }),
+      this.eventBus.on(GameEvents.FISHING_CATCH, () => this._hideWaiting()),
       this.eventBus.on(GameEvents.UI_SHOW_CATCH_FEEDBACK, (p) => {
         this._hideWaiting();
+        this._hideHookIndicator();
         this._showCatchResult(p);
       }),
       this.eventBus.on(GameEvents.FISHING_ESCAPE, (p) => {
         this._hideWaiting();
+        this._hideHookIndicator();
         this._showEscape(p);
       }),
       this.eventBus.on(GameEvents.FISHING_LINE_BREAK, (p) => {
         this._hideWaiting();
+        this._hideHookIndicator();
         this._showLineBreak(p);
       }),
       this.eventBus.on(GameEvents.FISHING_CAST, () => {
@@ -379,7 +243,7 @@ export class FishingUI {
       }),
       this.eventBus.on(GameEvents.FISHING_PROBE_ESCAPE, () => {
         this._hideWaiting();
-        this._showNotification(i18n.t('fishing.probeEscape'), 'info');
+        this._showNotification(i18n.t('fishing.probeEscape'));
       }),
       this.eventBus.on(GameEvents.FISHING_IDLE, () => {
         this._hideAll();
@@ -389,188 +253,239 @@ export class FishingUI {
         this._showCastBar();
         this._hideIdleHint();
       }),
+      this.eventBus.on(GameEvents.RUN_MODIFIER_ADDED, (p) => {
+        this._showCharmProc(p.modifier);
+      }),
+      this.eventBus.on(GameEvents.RUN_START, () => {
+        this._renderResources({ casts: undefined, gold: undefined });
+        this.resources.style.display = 'flex';
+      }),
+      this.eventBus.on(GameEvents.RUN_END, () => {
+        this.resources.style.display = 'none';
+      }),
     );
-
-    // Create waiting indicator
-    this.waitingIndicator = this._createDiv('waiting-indicator');
-    this.waitingIndicator.style.cssText = `
-      position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%);
-      color: #f0f0f0; font-size: 11px; letter-spacing: 2px; font-weight: bold;
-      display: none; pointer-events: none;
-      text-shadow: 0 0 4px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.6);
-    `;
-    this.waitingIndicator.textContent = i18n.t('fishing.waiting');
-    this.container.appendChild(this.waitingIndicator);
-
-    // EXT-5: Create probe count label
-    this.probeLabel = this._createDiv('probe-label');
-    this.probeLabel.style.cssText = `
-      position: absolute; top: 48%; left: 50%; transform: translate(-50%, -50%);
-      color: ${THEME.accent.amber}; font-size: 9px; letter-spacing: 1px; font-weight: bold;
-      display: none; pointer-events: none;
-      text-shadow: 0 0 4px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.6);
-    `;
-    this.container.appendChild(this.probeLabel);
   }
 
-  // ── Update each frame (for cast bar animation) ──
-
-  // EXT-1: Cast zone label element
-  private castZoneLabel: HTMLDivElement | null = null;
+  // ══ Per-frame update ══
 
   update(castPower: number, isCasting: boolean, probesRemaining = 3): void {
-    if (isCasting && this.castFill) {
-      this.castFill.style.width = `${castPower * 100}%`;
-      if (castPower > BALANCE.castOvershootThreshold) {
-        this.castFill.style.background = '${THEME.accent.red}';
-      } else if (castPower > 0.7) {
-        this.castFill.style.background = '${THEME.accent.yellow}';
-      } else {
-        this.castFill.style.background = `linear-gradient(90deg, ${this._themeColor}, ${THEME.accent.yellow})`;
-      }
-
-      // EXT-1: Show zone label based on cast power
-      if (!this.castZoneLabel) {
-        this.castZoneLabel = this._createDiv('cast-zone');
-        this.castZoneLabel.style.cssText = `
-          position: absolute; top: -16px; left: 0; right: 0;
-          text-align: center; font-size: 9px; letter-spacing: 1px; font-weight: bold;
-          pointer-events: none; transition: color 0.2s;
-          text-shadow: 0 0 3px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5);
-        `;
-        this.castBar?.appendChild(this.castZoneLabel);
-      }
-      if (castPower > BALANCE.castOvershootThreshold) {
-        this.castZoneLabel.textContent = '⚠️ OVERSTRESS';
-        this.castZoneLabel.style.color = '${THEME.accent.red}';
-      } else if (castPower > 0.7) {
-        this.castZoneLabel.textContent = '🌊 DEEP';
-        this.castZoneLabel.style.color = '${THEME.accent.yellow}';
-      } else if (castPower > 0.3) {
-        this.castZoneLabel.textContent = '🎯 MID (balanced)';
-        this.castZoneLabel.style.color = '${THEME.accent.green}';
-      } else {
-        this.castZoneLabel.textContent = '🏖️ SURFACE';
-        this.castZoneLabel.style.color = '${THEME.accent.blue}';
+    if (isCasting) {
+      this.castFill.style.transform = `scaleX(${Math.max(0, Math.min(1, castPower))})`;
+      const zone: CastZone =
+        castPower > BALANCE.castOvershootThreshold
+          ? 'over'
+          : castPower > 0.7
+            ? 'deep'
+            : castPower > 0.3
+              ? 'mid'
+              : 'surface';
+      if (zone !== this._castZone) {
+        this._castZone = zone;
+        this.castFill.className = `is-${zone}`;
+        this.castZoneLabel.className = `is-${zone}`;
+        this.castZoneLabel.textContent = this._castZoneText(zone);
       }
     }
-    // EXT-5: Update probe count label
-    if (this.probeLabel && this.probeLabel.style.display !== 'none') {
-      this.probeLabel.textContent = `🔍 Probes: ${probesRemaining}`;
+    if (this.probeLabel.style.display !== 'none' && probesRemaining !== this._probeShown) {
+      this._probeShown = probesRemaining;
+      this.probeLabel.innerHTML = `${svgIcon('bait', 10)}<span>${i18n.t('fishing.probes', {
+        '0': probesRemaining,
+        '1': 3,
+      })}</span>`;
     }
-    // Animate hook timer bar
     this._updateHookTimer();
   }
 
-  // ── UI state methods ──
+  private _castZoneText(zone: CastZone): string {
+    switch (zone) {
+      case 'over':
+        return i18n.t('fishing.castZone.over');
+      case 'deep':
+        return i18n.t('fishing.castZone.deep');
+      case 'mid':
+        return i18n.t('fishing.castZone.mid');
+      default:
+        return i18n.t('fishing.castZone.surface');
+    }
+  }
+
+  // ══ State helpers ══
 
   private _showCastBar(): void {
-    if (this.castBar) this.castBar.style.display = 'block';
-    if (this.tensionBar) this.tensionBar.style.display = 'none';
+    this.castBar.style.display = 'block';
+    this.tensionBar.style.display = 'none';
+    this.progressBar.style.display = 'none';
     if (this.catchPopup) this.catchPopup.style.display = 'none';
+    this._castZone = null;
   }
 
   private _hideCastBar(): void {
-    if (this.castBar) this.castBar.style.display = 'none';
+    this.castBar.style.display = 'none';
+    this.tensionBar.style.display = 'block';
+    this.progressBar.style.display = 'block';
   }
 
-  private hookStartTime = 0;
-  private hookDurationMs = 1200; // default in milliseconds
-
-  /** Set the actual hook window duration from FishingSystem (in ms). Called externally. */
+  /** Set the actual hook window duration (ms) reported by FishingSystem. */
   setHookDuration(durationMs: number): void {
     this.hookDurationMs = Math.max(100, durationMs);
   }
 
   private _showHookIndicator(): void {
-    if (this.hookIndicator) {
-      this.hookIndicator.style.display = 'block';
-      this.hookIndicator.textContent = i18n.t('fishing.click');
-      // Start timer bar
-      this.hookStartTime = performance.now();
-    }
+    this.hookIndicator.style.display = 'flex';
+    this.hookStartTime = performance.now();
+    this.hookTimerFill.style.transform = 'scaleX(1)';
   }
 
   private _hideHookIndicator(): void {
-    if (this.hookIndicator) this.hookIndicator.style.display = 'none';
+    this.hookIndicator.style.display = 'none';
   }
 
-  /** Called from update() to animate hook timer bar. */
   private _updateHookTimer(): void {
-    if (!this.hookIndicator || this.hookIndicator.style.display === 'none') return;
-    const fill = document.getElementById('hook-timer-fill');
-    if (!fill) return;
+    if (this.hookIndicator.style.display === 'none') return;
     const elapsed = performance.now() - this.hookStartTime;
     const remaining = Math.max(0, 1 - elapsed / this.hookDurationMs);
-    fill.style.width = `${remaining * 100}%`;
+    this.hookTimerFill.style.transform = `scaleX(${remaining})`;
   }
 
-  private _updateProgressBar(progress: number): void {
-    if (this.progressBar) this.progressBar.style.display = 'block';
-    if (this.progressFill) {
-      this.progressFill.style.height = `${progress}%`;
-    }
+  private _setProgress(progress: number): void {
+    const clamped = Math.max(0, Math.min(100, progress));
+    if (Math.round(clamped) === this._progressShown) return;
+    this._progressShown = Math.round(clamped);
+    this.progressFill.style.transform = `scaleY(${clamped / 100})`;
+    this.progressValue.textContent = String(this._progressShown);
   }
 
-  private behaviorLabel: HTMLDivElement | null = null;
-
-  private _updateBehaviorLabel(fish: any): void {
-    if (!this.behaviorLabel) {
-      this.behaviorLabel = this._createDiv('behavior-label');
-      this.behaviorLabel.style.cssText = `
-        position: absolute; top: 32%; left: 50%; transform: translateX(-50%);
-        color: #fbbf24; font-size: 10px; letter-spacing: 1px; font-weight: bold;
-        pointer-events: none; display: none;
-        text-shadow: 0 0 4px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.6);
-      `;
-      this.container.appendChild(this.behaviorLabel);
-    }
-    if (!fish) return;
-    const type = fish.behavior?.type ?? 'steady';
+  private _setBehavior(fish: SpiritFish): void {
+    const type = fish?.behavior?.type ?? 'steady';
+    if (type === this._behaviorType) return;
+    this._behaviorType = type;
     const labels: Record<string, string> = {
-      steady: i18n.t('behavior.steady'),
-      sprint: i18n.t('behavior.sprint'),
-      lazy: i18n.t('behavior.lazy'),
-      zigzag: i18n.t('behavior.zigzag'),
-      deep_diver: i18n.t('behavior.deepDiver'),
-      surface_jumper: i18n.t('behavior.surfaceJumper'),
+      steady: i18n.t('behavior2.steady'),
+      sprint: i18n.t('behavior2.sprint'),
+      lazy: i18n.t('behavior2.lazy'),
+      zigzag: i18n.t('behavior2.zigzag'),
+      deep_diver: i18n.t('behavior2.deepDiver'),
+      surface_jumper: i18n.t('behavior2.surfaceJumper'),
     };
-    this.behaviorLabel.textContent = labels[type] ?? type;
-    this.behaviorLabel.style.display = 'block';
+    this.behaviorLabel.innerHTML = `${svgIcon('fish', 10)}<span>${labels[type] ?? type}</span>`;
+    this.behaviorLabel.style.display = 'inline-flex';
   }
 
   private _flashTensionBar(): void {
-    if (!this.tensionBar) return;
-    this.tensionBar.style.boxShadow = '0 0 12px 3px rgba(255,80,80,0.8)';
-    setTimeout(() => {
-      if (this.tensionBar) this.tensionBar.style.boxShadow = '';
-    }, 300);
+    this.tensionBar.style.boxShadow = '0 0 14px 2px rgba(221,138,122,0.75)';
+    window.setTimeout(() => {
+      this.tensionBar.style.boxShadow = '';
+    }, 320);
   }
 
-  private _showFishName(fish: any): void {
-    if (this.fishNameLabel && fish) {
-      this.fishNameLabel.textContent = fish.name?.en ?? fish.name ?? '???';
+  private _showFishName(fish: SpiritFish): void {
+    if (!fish) return;
+    const name = fish.name?.[i18n.lang] ?? fish.name?.en ?? '???';
+    if (name !== this._fishName) {
+      this._fishName = name;
+      this.fishNameLabel.textContent = name;
       this.fishNameLabel.style.display = 'block';
     }
   }
 
-  private _updateTensionBar(tension: number): void {
-    if (this.tensionBar) this.tensionBar.style.display = 'block';
-    if (this.tensionFill) {
-      this.tensionFill.style.height = `${tension}%`;
-      // Color based on zone
-      if (tension > BALANCE.tensionYellowMax) {
-        this.tensionFill.style.background = '#ff4444';
-      } else if (tension > BALANCE.tensionGreenMax) {
-        this.tensionFill.style.background = '#ffcc00';
-      } else {
-        this.tensionFill.style.background = this._themeColor;
-      }
+  private _setTension(tension: number): void {
+    const clamped = Math.max(0, Math.min(100, tension));
+    this.tensionFill.style.transform = `scaleY(${clamped / 100})`;
+    this.tensionMarker.style.bottom = `${clamped}%`;
+    const isRed = clamped > BALANCE.tensionYellowMax;
+    const isYellow = clamped > BALANCE.tensionGreenMax;
+    this.tensionFill.className = isRed ? 'is-red' : isYellow ? 'is-yellow' : '';
+    this.tensionBar.classList.toggle('is-danger', isRed);
+    const rounded = Math.round(clamped);
+    if (rounded !== this._tensionShown) {
+      this._tensionShown = rounded;
+      this.tensionValue.textContent = String(rounded);
     }
   }
 
-  // P2-7: Fullscreen glow element for mythic catches
-  private mythicGlow: HTMLDivElement | null = null;
+  private _renderResources(detail: ResourceDetail | undefined): void {
+    const casts = detail?.casts;
+    const runGold = detail?.runGold ?? 0;
+    const parts: string[] = [];
+    if (typeof casts === 'number') {
+      parts.push(`<span class="fishing-res__item">${svgIcon('rod', 11)}<b>${casts}</b></span>`);
+    }
+    parts.push(`<span class="fishing-res__item">${svgIcon('coin', 11)}<b>${runGold}</b></span>`);
+    this.resources.innerHTML = parts.join('');
+    this.resources.style.display = 'flex';
+  }
+
+  // ══ Waiting / probe ══
+
+  private _showWaiting(): void {
+    this.waitingIndicator.style.display = 'block';
+    this.probeLabel.style.display = 'inline-flex';
+    this._probeShown = -1;
+  }
+
+  private _hideWaiting(): void {
+    this.waitingIndicator.style.display = 'none';
+    this.probeLabel.style.display = 'none';
+  }
+
+  private _triggerBiteGlow(): void {
+    this.biteGlow.style.borderColor = 'rgba(221,138,122,0.75)';
+    window.setTimeout(() => {
+      this.biteGlow.style.borderColor = 'rgba(221,138,122,0)';
+    }, 420);
+  }
+
+  private _showNotification(msg: string): void {
+    this.notification.textContent = msg;
+    this.notification.style.opacity = '1';
+    const prev = FishingUI.notificationTimers.get(this.notification);
+    if (prev !== undefined) clearTimeout(prev);
+    FishingUI.notificationTimers.set(
+      this.notification,
+      window.setTimeout(() => {
+        this.notification.style.opacity = '0';
+      }, 1600),
+    );
+  }
+
+  private _showCharmProc(modifier: Modifier): void {
+    if (!modifier) return;
+    const charm = i18n.charm(modifier.id);
+    const label =
+      charm.name && charm.name !== `charm.${modifier.id}.name` ? charm.name : modifier.name;
+    this.charmProc.innerHTML = `${svgIcon('charm', 11)}<span>${i18n.t('fishing.charmProc', {
+      '0': label,
+    })}</span>`;
+    this.charmProc.style.display = 'flex';
+    this.charmProc.style.animation = 'none';
+    // restart the CSS animation without reading layout
+    void this.charmProc.offsetWidth;
+    this.charmProc.style.animation = '';
+    window.setTimeout(() => {
+      this.charmProc.style.display = 'none';
+    }, 1800);
+  }
+
+  private _showIdleHint(): void {
+    this.idleHint.style.display = 'block';
+  }
+
+  private _hideIdleHint(): void {
+    this.idleHint.style.display = 'none';
+  }
+
+  private _hideAll(): void {
+    this.castBar.style.display = 'none';
+    this.tensionBar.style.display = 'none';
+    this.progressBar.style.display = 'none';
+    this.fishNameLabel.style.display = 'none';
+    this.behaviorLabel.style.display = 'none';
+    this.hookIndicator.style.display = 'none';
+    this._hideWaiting();
+    this._hideHookIndicator();
+  }
+
+  // ══ Catch feedback ══
 
   private _showCatchResult(payload: {
     fish: SpiritFish;
@@ -581,233 +496,177 @@ export class FishingUI {
     isNewDiscovery?: boolean;
     fishpediaCount?: number;
   }): void {
-    if (!this.catchPopup) return;
+    const rarity = payload.fish.rarity;
+    const isMythic = rarity === FishRarity.Mythic;
+    const color = rarityColor(rarity);
 
-    // P2-7: Mythic catch — fullscreen golden glow animation
-    const isMythic = payload.fish.rarity === FishRarity.Mythic;
     if (isMythic) {
-      if (!this.mythicGlow) {
-        this.mythicGlow = this._createDiv('mythic-glow');
-        this.mythicGlow.style.cssText = `
-          position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-          pointer-events: none; z-index: 49;
-          background: radial-gradient(ellipse at center, rgba(255,215,0,0.25) 0%, transparent 70%);
-          animation: mythic-pulse 0.8s ease-in-out 3;
-        `;
-        this.container.appendChild(this.mythicGlow);
-      }
       this.mythicGlow.style.display = 'block';
-      // Auto-hide after animation
-      setTimeout(() => {
-        if (this.mythicGlow) this.mythicGlow.style.display = 'none';
+      window.setTimeout(() => {
+        this.mythicGlow.style.display = 'none';
       }, 2500);
     }
 
-    const qualityColors: Record<string, string> = {
-      [CatchQuality.Perfect]: THEME.accent.gold,
-      [CatchQuality.Standard]: THEME.accent.green,
-      [CatchQuality.Struggle]: THEME.accent.orange,
-    };
-
-    const resultKey =
+    const qualityKey =
       payload.quality === CatchQuality.Perfect
         ? 'result.perfect'
         : payload.quality === CatchQuality.Struggle
           ? 'result.struggle'
           : 'result.standard';
-    const mythicStar = isMythic ? '🌟 MYTHIC 🌟' : '';
-    this.catchPopup.innerHTML = `
-      <div style="font-size: 18px; margin-bottom: 4px; color: ${isMythic ? THEME.accent.gold : qualityColors[payload.quality] || '#fff'}">
-        ${mythicStar || i18n.t(resultKey)}
-      </div>
-      <div style="font-size: 13px; margin-bottom: 2px;">
-        ${payload.fish.name.en}
-      </div>
-      <div style="font-size: 10px; color: #888; margin-bottom: 8px;">
-        ${payload.size.toFixed(1)}cm · +${payload.gold}G
-        ${payload.isSpiritVariant ? ' · ✦SPIRIT✦' : ''}
-      </div>
-      ${(payload.fishpediaCount ?? FishingUI.fishpediaCount) > 0 ? `<div style="font-size: 9px; color: #9ca3af; margin-top: 2px;">🐟 Fishpedia: ${payload.fishpediaCount ?? FishingUI.fishpediaCount}/141</div>` : ''}
-      ${payload.isNewDiscovery ? `<div style="font-size: 11px; color: ${THEME.accent.greenLight}; margin-top: 4px; font-weight: bold;">✨ NEW DISCOVERY!</div>` : ''}
-      <div style="font-size: 9px; color: #9ca3af; margin-top: 6px;">
-        ${i18n.t('result.clickContinue')}
-      </div>
-    `;
-    this.catchPopup.style.display = 'block';
+    const qualityIcon: IconName =
+      payload.quality === CatchQuality.Perfect
+        ? 'sparkle'
+        : payload.quality === CatchQuality.Struggle
+          ? 'warn'
+          : 'check';
 
-    // BALANCE-FEEDBACK: floating gold text + extra particle emphasis on perfect/mythic
+    const badges: string[] = [];
+    if (isMythic) {
+      badges.push(
+        `<span class="ss-chip ss-chip--coral">${svgIcon('rarity', 9)}${i18n.t('fishing.mythic')}</span>`,
+      );
+    }
+    if (payload.isSpiritVariant) {
+      badges.push(
+        `<span class="ss-chip ss-chip--sky">${svgIcon('soul', 9)}${i18n.t('fishing.spirit')}</span>`,
+      );
+    }
+    if (payload.isNewDiscovery) {
+      badges.push(
+        `<span class="ss-chip ss-chip--sage">${svgIcon('sparkle', 9)}${i18n.t('fishing.newDiscovery')}</span>`,
+      );
+    }
+    const pedia = payload.fishpediaCount ?? FishingUI.fishpediaCount;
+    if (pedia > 0) {
+      badges.push(
+        `<span class="ss-chip">${svgIcon('book', 9)}${i18n.t('fishing.pediaCount', {
+          '0': pedia,
+        })}</span>`,
+      );
+    }
+
+    this.catchPopup.style.borderColor = color;
+    this.catchPopup.style.boxShadow = `0 18px 48px rgba(8,10,11,0.55), 0 0 30px ${this._alpha(color, 0.16)}`;
+    this.catchPopup.innerHTML = `
+      <div class="catch-quality" style="color:${color}">
+        ${svgIcon(qualityIcon, 16)}<span>${i18n.t(qualityKey)}</span>
+      </div>
+      <div class="catch-name">${payload.fish.name[i18n.lang] ?? payload.fish.name.en}</div>
+      <div class="catch-name-en">${payload.fish.name.en}</div>
+      <div class="catch-meta">
+        <span class="ss-chip ss-chip--gold">${svgIcon('fish', 9)}${payload.size.toFixed(1)}cm</span>
+        <span class="ss-chip ss-chip--gold">${svgIcon('coin', 9)}+${payload.gold}</span>
+        <span class="ss-chip" style="color:${color}">${svgIcon('rarity', 9)}${this._rarityLabel(rarity)}</span>
+      </div>
+      ${badges.length ? `<div class="catch-badges">${badges.join('')}</div>` : ''}
+      <div class="catch-hint">${i18n.t('fishing.continueHint')}</div>`;
+
+    this.catchPopup.style.display = 'block';
     this._showFloatingGold(payload.gold, payload.quality, isMythic);
 
-    // Auto-hide after 3s or on click
-    setTimeout(() => {
-      if (this.catchPopup) this.catchPopup.style.display = 'none';
+    window.setTimeout(() => {
+      this.catchPopup.style.display = 'none';
     }, 3000);
   }
 
-  // BALANCE-FEEDBACK: animated +XXG text on successful catch
-  private _showFloatingGold(amount: number, quality: CatchQuality, isMythic: boolean): void {
-    const el = document.createElement('div');
-    const color = isMythic
-      ? THEME.accent.gold
-      : quality === CatchQuality.Perfect
-        ? THEME.accent.yellow
-        : THEME.accent.green;
-    const prefix = quality === CatchQuality.Perfect ? '✨ ' : '';
-    el.style.cssText = `
-      position: fixed; top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      color: ${color}; font-size: ${isMythic ? '18px' : quality === CatchQuality.Perfect ? '14px' : '11px'};
-      font-weight: bold; pointer-events: none; z-index: 500;
-      text-shadow: 0 0 4px rgba(0,0,0,0.8);
-      animation: float-gold 1.2s ease-out forwards;
-    `;
-    el.textContent = `${prefix}+${amount}G`;
-    document.body.appendChild(el);
-    setTimeout(() => el.remove(), 1300);
+  private _rarityLabel(rarity: string): string {
+    const labels: Record<string, string> = {
+      [FishRarity.Common]: i18n.t('rarity.common'),
+      [FishRarity.Uncommon]: i18n.t('rarity.uncommon'),
+      [FishRarity.Rare]: i18n.t('rarity.rare'),
+      [FishRarity.Legendary]: i18n.t('rarity.legendary'),
+      [FishRarity.Mythic]: i18n.t('rarity.mythic'),
+    };
+    return labels[rarity] ?? rarity;
   }
 
-  // EXT-3: Rotate through tip messages on failure
-  private _failTipIndex = 0;
-  private static _FAIL_TIPS = [
-    '💡 Try releasing earlier in the red zone.',
-    '💡 Spirit Snare charm extends hook windows.',
-    '💡 Use Deep zone casts for rare fish.',
-    '💡 Perfect catches give 50% more gold.',
-    '💡 Slack the line to drop tension fast.',
-  ];
-
   private _showLineBreak(payload: { reason: string }): void {
-    if (!this.catchPopup) return;
     const reasonKey =
       payload.reason === 'overshoot'
         ? 'result.overshoot'
         : payload.reason === 'worn_out'
           ? 'result.wornOut'
           : 'result.maxTension';
-    const tip = FishingUI._FAIL_TIPS[this._failTipIndex % FishingUI._FAIL_TIPS.length];
-    this._failTipIndex++;
+    const tip = this._nextTip();
+    this.catchPopup.style.borderColor = THEME.accent.red;
+    this.catchPopup.style.boxShadow = `0 18px 48px rgba(8,10,11,0.55), 0 0 26px rgba(221,138,122,0.2)`;
     this.catchPopup.innerHTML = `
-      <div style="font-size: 14px; color: ${THEME.accent.red}; margin-bottom: 4px;">
-        ${i18n.t('result.lineSnap')}
+      <div class="catch-quality" style="color:${THEME.accent.red}">
+        ${svgIcon('warn', 16)}<span>${i18n.t('result.lineSnap')}</span>
       </div>
-      <div style="font-size: 10px; color: #888;">
-        ${i18n.t(reasonKey)}
-      </div>
-      <div style="font-size: 9px; color: #d4c4a8; margin-top: 6px;">
-        ${tip}
-      </div>
-      <div style="font-size: 9px; color: #9ca3af; margin-top: 6px;">
-        ${i18n.t('result.clickContinue')}
-      </div>
-    `;
+      <div class="catch-tip">${i18n.t(reasonKey)}</div>
+      <div class="catch-tip" style="color:${THEME.accent.gold}">${tip}</div>
+      <div class="catch-hint">${i18n.t('fishing.continueHint')}</div>`;
     this.catchPopup.style.display = 'block';
-    setTimeout(() => {
-      if (this.catchPopup) this.catchPopup.style.display = 'none';
+    window.setTimeout(() => {
+      this.catchPopup.style.display = 'none';
     }, 3000);
   }
 
   private _showEscape(payload: { fish: SpiritFish | null; reason: string }): void {
-    if (!this.catchPopup) return;
-    const tip = FishingUI._FAIL_TIPS[this._failTipIndex % FishingUI._FAIL_TIPS.length];
-    this._failTipIndex++;
+    const tip = this._nextTip();
+    const fishName = payload.fish?.name?.[i18n.lang] ?? payload.fish?.name?.en ?? '?';
+    this.catchPopup.style.borderColor = THEME.accent.orange;
+    this.catchPopup.style.boxShadow =
+      '0 18px 48px rgba(8,10,11,0.55), 0 0 26px rgba(220,154,114,0.18)';
     this.catchPopup.innerHTML = `
-      <div style="font-size: 14px; color: ${THEME.accent.orange}; margin-bottom: 4px;">
-        ${i18n.t('result.escaped')}
+      <div class="catch-quality" style="color:${THEME.accent.orange}">
+        ${svgIcon('fish', 16)}<span>${i18n.t('result.escaped')}</span>
       </div>
-      <div style="font-size: 10px; color: #888;">
-        ${payload.fish ? payload.fish.name.en : '?'} ${i18n.t('result.gotAway')}
-      </div>
-      <div style="font-size: 9px; color: #d4c4a8; margin-top: 6px;">
-        ${tip}
-      </div>
-      <div style="font-size: 9px; color: #9ca3af; margin-top: 6px;">
-        ${i18n.t('result.clickContinue')}
-      </div>
-    `;
+      <div class="catch-tip">${i18n.t('fishing.escapedFish', { '0': fishName })}</div>
+      <div class="catch-tip" style="color:${THEME.accent.gold}">${tip}</div>
+      <div class="catch-hint">${i18n.t('fishing.continueHint')}</div>`;
     this.catchPopup.style.display = 'block';
-    setTimeout(() => {
-      if (this.catchPopup) this.catchPopup.style.display = 'none';
+    window.setTimeout(() => {
+      this.catchPopup.style.display = 'none';
     }, 3000);
   }
 
-  private _showWaiting(): void {
-    if (this.waitingIndicator) this.waitingIndicator.style.display = 'block';
-    // EXT-5: Show probe label during waiting
-    if (this.probeLabel) this.probeLabel.style.display = 'block';
+  private _nextTip(): string {
+    const tips = [
+      i18n.t('fishing.tip.early'),
+      i18n.t('fishing.tip.snare'),
+      i18n.t('fishing.tip.deep'),
+      i18n.t('fishing.tip.perfect'),
+      i18n.t('fishing.tip.slack'),
+    ];
+    const tip = tips[this._failTipIndex % tips.length];
+    this._failTipIndex++;
+    return tip;
   }
 
-  private _hideWaiting(): void {
-    if (this.waitingIndicator) this.waitingIndicator.style.display = 'none';
-    if (this.probeLabel) this.probeLabel.style.display = 'none';
+  private _showFloatingGold(amount: number, quality: CatchQuality, isMythic: boolean): void {
+    const el = document.createElement('div');
+    el.className = 'float-gold';
+    el.style.cssText = `left:50%; top:50%; color:${
+      isMythic
+        ? THEME.accent.gold
+        : quality === CatchQuality.Perfect
+          ? THEME.accent.yellow
+          : THEME.accent.green
+    }; font-size:${isMythic ? '18px' : quality === CatchQuality.Perfect ? '14px' : '11px'};`;
+    el.textContent = `+${amount}`;
+    document.body.appendChild(el);
+    window.setTimeout(() => el.remove(), 1300);
   }
 
-  // POLISH-1: Brief window border glow on bite — catches attention without being intrusive
-  private _triggerBiteGlow(): void {
-    if (!this.biteGlow) {
-      this.biteGlow = this._createDiv('bite-glow');
-      this.biteGlow.style.cssText = `
-        position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-        pointer-events: none; z-index: 48;
-        border: 3px solid rgba(255,100,80,0);
-        border-radius: ${THEME.radius.lg};
-        transition: border-color 0.15s ease;
-      `;
-      this.container.appendChild(this.biteGlow);
-    }
-    this.biteGlow.style.borderColor = 'rgba(255,100,80,0.7)';
-    setTimeout(() => {
-      if (this.biteGlow) this.biteGlow.style.borderColor = 'rgba(255,100,80,0)';
-    }, 400);
+  private _alpha(hex: string, alpha: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
-  private _showNotification(msg: string, _type: string): void {
-    if (!this.notification) return;
-    this.notification.textContent = msg;
-    this.notification.style.opacity = '1';
-    const prev = FishingUI.notificationTimers.get(this.notification);
-    if (prev !== undefined) clearTimeout(prev);
-    FishingUI.notificationTimers.set(
-      this.notification,
-      window.setTimeout(() => {
-        if (this.notification) this.notification.style.opacity = '0';
-      }, 1500),
-    );
-  }
-
-  private _showIdleHint(): void {
-    const el = document.getElementById('idle-hint');
-    if (el) el.style.display = 'block';
-  }
-  private _hideIdleHint(): void {
-    const el = document.getElementById('idle-hint');
-    if (el) el.style.display = 'none';
-  }
-
-  private _hideAll(): void {
-    if (this.castBar) this.castBar.style.display = 'none';
-    if (this.tensionBar) this.tensionBar.style.display = 'none';
-    if (this.progressBar) this.progressBar.style.display = 'none';
-    if (this.fishNameLabel) this.fishNameLabel.style.display = 'none';
-    if (this.hookIndicator) this.hookIndicator.style.display = 'none';
-    if (this.waitingIndicator) this.waitingIndicator.style.display = 'none';
-    if (this.probeLabel) this.probeLabel.style.display = 'none';
-  }
-
-  // ── Helper ──
-
-  private _createDiv(id: string): HTMLDivElement {
-    const div = document.createElement('div');
-    div.id = id;
-    return div;
-  }
-
-  // ── Cleanup ──
+  // ══ Cleanup ══
 
   dispose(): void {
     this.unsubs.forEach((fn) => fn());
     this.unsubs = [];
-    if (this.container.parentElement) {
-      this.container.parentElement.removeChild(this.container);
+    if (this.resourceHandler) {
+      document.removeEventListener('soul:resources', this.resourceHandler);
+      this.resourceHandler = null;
     }
+    this.catchPopup.remove();
+    this.container.remove();
   }
 }

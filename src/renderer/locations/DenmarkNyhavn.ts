@@ -1,411 +1,568 @@
 // ===== src/renderer/locations/DenmarkNyhavn.ts =====
-// 🇩🇰 Denmark — Nyhavn Winter Night with colorful townhouses, harbor water,
-// wooden ships, copper spire, dockside lamps, drifting snow and chimney smoke.
-// Art upgraded to match the richer voxel diorama ND standard.
+// 🇩🇰 Denmark �?Nyhavn winter night.
+//
+// v2 art pass: a copper-green spire anchors the left third, six townhouses with
+// deliberately uneven widths close the backdrop, two wooden sailing ships sit in
+// the harbour and a snow-dusted quay frames the foreground. All static voxels
+// are flushed into three InstancedMesh batches.
 
 import * as THREE from 'three';
 import { BaseLocation } from './BaseLocation';
-import { FloatingIsland } from '../rendering/FloatingIsland';
-import { Waterfall } from '../rendering/Waterfall';
-import { MaterialCache } from '../rendering/MaterialCache';
-import { VoxelBuilder } from '../rendering/VoxelBuilder';
 import { LOCATIONS } from '../data/location-data';
+import { Waterfall } from '../rendering/Waterfall';
 import type { LocationData } from '../../shared/types';
 import {
-  updateFlicker,
-  createSurfaceShimmer,
-  updateSurfaceShimmer,
-  createRisingPuffs,
-  updateRisingPuffs,
-  createLanternGlow,
-} from './AtmosphereEffects';
+  buildGlowOrb,
+  buildInstancedVoxels,
+  createRng,
+  hashSeed,
+  mixHex,
+  shade,
+  type InstancedVoxel,
+} from '../rendering/ArtKit';
+
+const SURFACE_Y = 1.5;
+const TAU = Math.PI * 2;
+
+class VoxelStage {
+  private readonly solidCells: InstancedVoxel[] = [];
+  private readonly trimCells: InstancedVoxel[] = [];
+  private readonly glowCells: InstancedVoxel[] = [];
+
+  solid(
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    color: number,
+    rotY = 0,
+  ): void {
+    this.solidCells.push({ x, y, z, w, h, d, color, rotY });
+  }
+
+  trim(
+    x: number,
+    y: number,
+    z: number,
+    w: number,
+    h: number,
+    d: number,
+    color: number,
+    rotY = 0,
+  ): void {
+    this.trimCells.push({ x, y, z, w, h, d, color, rotY });
+  }
+
+  glow(x: number, y: number, z: number, w: number, h: number, d: number, color: number): void {
+    this.glowCells.push({ x, y, z, w, h, d, color });
+  }
+
+  flush(group: THREE.Group): void {
+    if (this.solidCells.length > 0) {
+      group.add(buildInstancedVoxels(this.solidCells, { castShadow: true, receiveShadow: true }));
+    }
+    if (this.trimCells.length > 0) {
+      group.add(buildInstancedVoxels(this.trimCells, { castShadow: false, receiveShadow: true }));
+    }
+    if (this.glowCells.length > 0) {
+      group.add(
+        buildInstancedVoxels(this.glowCells, {
+          castShadow: false,
+          receiveShadow: false,
+          shading: 'basic',
+        }),
+      );
+    }
+  }
+}
+
+type MoteMode = 'rise' | 'fall' | 'orbit' | 'drift';
+
+interface MoteSpec {
+  x: number;
+  y: number;
+  z: number;
+  w: number;
+  h: number;
+  d: number;
+  color: number;
+  mode: MoteMode;
+  speed: number;
+  amp: number;
+  phase: number;
+  span: number;
+}
+
+class MoteField {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly motes: MoteSpec[];
+  private readonly matrix = new THREE.Matrix4();
+  private readonly position = new THREE.Vector3();
+  private readonly quaternion = new THREE.Quaternion();
+  private readonly scale = new THREE.Vector3();
+  private readonly color = new THREE.Color();
+
+  constructor(motes: MoteSpec[], opts: { additive?: boolean; opacity?: number } = {}) {
+    this.motes = motes;
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: opts.opacity ?? 1,
+      depthWrite: opts.additive !== true,
+      blending: opts.additive === true ? THREE.AdditiveBlending : THREE.NormalBlending,
+    });
+    this.mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, motes.length));
+    motes.forEach((mote, index) => {
+      this.color.setHex(mote.color);
+      this.mesh.setColorAt(index, this.color);
+    });
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
+    this.mesh.count = motes.length;
+    this.update(0);
+  }
+
+  update(time: number): void {
+    for (let i = 0; i < this.motes.length; i++) {
+      const mote = this.motes[i];
+      let x = mote.x;
+      let y = mote.y;
+      let z = mote.z;
+      if (mote.mode === 'rise') {
+        y =
+          mote.y +
+          ((((time * mote.speed + mote.phase * mote.span) % mote.span) + mote.span) % mote.span);
+        x += Math.sin(time * mote.speed * 2.1 + mote.phase * TAU) * mote.amp;
+        z += Math.cos(time * mote.speed * 1.7 + mote.phase * TAU) * mote.amp;
+      } else if (mote.mode === 'fall') {
+        y =
+          mote.y -
+          ((((time * mote.speed + mote.phase * mote.span) % mote.span) + mote.span) % mote.span);
+        x += Math.sin(time * 0.8 + mote.phase * TAU) * mote.amp;
+      } else if (mote.mode === 'orbit') {
+        x += Math.cos(time * mote.speed + mote.phase * TAU) * mote.amp;
+        z += Math.sin(time * mote.speed + mote.phase * TAU) * mote.amp;
+        y += Math.sin(time * mote.speed * 0.7 + mote.phase * TAU) * mote.amp * 0.6;
+      } else {
+        x += Math.sin(time * mote.speed + mote.phase * TAU) * mote.amp;
+        z +=
+          ((((time * mote.speed * 0.36 + mote.phase * mote.span) % mote.span) + mote.span) %
+            mote.span) -
+          mote.span / 2;
+        y += Math.sin(time * mote.speed * 1.3 + mote.phase * TAU) * mote.amp * 0.5;
+      }
+      this.position.set(x, y, z);
+      this.scale.set(mote.w, mote.h, mote.d);
+      this.matrix.compose(this.position, this.quaternion, this.scale);
+      this.mesh.setMatrixAt(i, this.matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+interface FlickerSpec {
+  light: THREE.PointLight;
+  base: number;
+  speed: number;
+  amp: number;
+  phase: number;
+}
 
 export class DenmarkNyhavn extends BaseLocation {
   readonly id = 'denmark';
-  private _particles: THREE.Object3D[] = [];
-  private _flickerLights: {
-    light: THREE.Light;
-    base: number;
-    speed: number;
-    amp: number;
-    noise?: boolean;
+
+  private readonly motes: MoteField[] = [];
+  private readonly flickers: FlickerSpec[] = [];
+  private readonly floaters: {
+    object: THREE.Object3D;
+    baseY: number;
+    phase: number;
+    roll: number;
   }[] = [];
-  private _waterfall: Waterfall | null = null;
-  private _mistPuffs: THREE.Mesh[] = [];
-  private _smokePuffs: THREE.Mesh[] = [];
-  private _waterTiles: THREE.Mesh[] = [];
-  private _ships: THREE.Group[] = [];
+  private waterfall: Waterfall | null = null;
 
   get data(): LocationData {
     return LOCATIONS.find((l) => l.id === 'denmark')!;
   }
 
   protected buildGeometry(): void {
-    const m = {
-      houseRed: MaterialCache.getLambert(0x8a3324),
-      houseOrange: MaterialCache.getLambert(0xcc8844),
-      houseYellow: MaterialCache.getLambert(0xccaa44),
-      houseGreen: MaterialCache.getLambert(0x487865),
-      houseBlue: MaterialCache.getLambert(0x3a5a8a),
-      housePurple: MaterialCache.getLambert(0x6a4a6a),
-      houseTeal: MaterialCache.getLambert(0x3a7a7a),
-      roofCharcoal: MaterialCache.getLambert(0x1e222b),
-      snow: MaterialCache.getLambert(0xeef0f5),
-      mastWood: MaterialCache.getLambert(0x473425),
-      hullWood: MaterialCache.getLambert(0x5a3a25),
-      sailWhite: MaterialCache.getLambert(0xd9d2c5),
-      copperPatina: MaterialCache.getLambert(0x4a8a7a),
-      hyggeGlow: MaterialCache.getBasic(0xffbb44),
-      lampPost: MaterialCache.getLambert(0x15191e),
-      water: MaterialCache.getTransparentLambert(0x2a4a5a, 0.78),
-      waterLight: MaterialCache.getTransparentLambert(0x3a5a6a, 0.68),
-      seagullWhite: MaterialCache.getLambert(0xffffff),
-    };
-
-    // Theme-aware floating island
-    const islandTheme = this.data.theme?.island;
-    const island = new FloatingIsland(
-      islandTheme ? { ...islandTheme } : { stone: 0x8a9aaa, earth: 0x7a8a9a, grass: 0xeef0f5 },
-    );
+    const island = this.createIsland();
     this.group.add(island.group);
 
-    const layer = new VoxelBuilder();
-    layer.group.position.y = 1.5;
-    this.group.add(layer.group);
+    const art = this.art;
+    const accent = art.accent ?? 0x7fb0a0;
+    const glow = art.glow ?? 0xffbe6b;
+    const shadow = art.shadow ?? 0x263244;
+    const veil = art.veil ?? 0x1a2634;
+    const key = art.key ?? 0xa9c4e8;
+    const islandRadius = island.radius;
 
-    // Raw box helper for grouped objects
-    const box = (
-      w: number,
-      h: number,
-      d: number,
-      mat: THREE.Material,
-      x: number,
-      y: number,
-      z: number,
-      parent: THREE.Group,
-      cast = true,
-    ) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      mesh.position.set(x, y, z);
-      mesh.castShadow = cast;
-      mesh.receiveShadow = true;
-      parent.add(mesh);
-      return mesh;
-    };
+    // Local Nyhavn palette (derived from the 6-colour script, muted for snow).
+    const houseRed = mixHex(key, 0xa8493c, 0.55);
+    const houseYellow = mixHex(glow, key, 0.35);
+    const houseBlue = mixHex(key, 0x3a5a8a, 0.5);
+    const houseGreen = mixHex(accent, 0x2f6a52, 0.4);
+    const houseOchre = mixHex(glow, 0xa8763c, 0.4);
+    const houseTeal = accent;
+    const roofDark = mixHex(shadow, 0x161b22, 0.4);
+    const snow = mixHex(key, 0xf2f5fa, 0.7);
+    const snowShade = mixHex(snow, veil, 0.24);
+    const copper = mixHex(accent, 0x4a8a7a, 0.55);
+    const wood = mixHex(shadow, 0x4a3426, 0.5);
+    const tallow = glow;
 
-    // ── Waterfall rim ──
-    this._waterfall = new Waterfall({
-      radius: 4.6,
-      innerRadius: 4.0,
-      yBase: -0.2,
-      heightMin: 1.0,
-      heightMax: 1.8,
-      color: 0x2a4a5a,
-      opacity: 0.6,
-      density: 0.7,
-    });
-    this.group.add(this._waterfall.group);
+    const stage = new VoxelStage();
+    const rng = createRng(hashSeed('denmark:nyhavn'));
 
-    // ── Harbor water with animated tiles ──
-    const waterGroup = new THREE.Group();
-    waterGroup.position.y = -0.45;
-    layer.group.add(waterGroup);
-    for (let x = -4; x <= 4; x += 1) {
-      for (let z = -4; z <= 4; z += 1) {
-        if (Math.sqrt(x * x + z * z) > 4.8) continue;
-        const mat = Math.random() > 0.5 ? m.water : m.waterLight;
-        const w = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.1, 0.95), mat);
-        w.position.set(x, 0, z);
-        w.receiveShadow = false;
-        w.castShadow = false;
-        w.userData = { baseY: 0, phase: Math.random() * Math.PI * 2 };
-        waterGroup.add(w);
-        this._waterTiles.push(w);
-      }
+    // ── Quay: snow-dusted stone strip along the camera side ──
+    for (let i = 0; i < 30; i++) {
+      const angle = 0.05 + (i / 30) * 1.25;
+      const radius = islandRadius * rng.nextFloat(0.8, 0.94);
+      stage.trim(
+        Math.cos(angle) * radius,
+        SURFACE_Y + 0.03,
+        Math.sin(angle) * radius,
+        rng.nextFloat(0.45, 0.8),
+        0.08,
+        rng.nextFloat(0.3, 0.55),
+        mixHex(snowShade, snow, rng.nextFloat(0, 0.6)),
+        rng.nextFloat(-0.2, 0.2),
+      );
+    }
+    // Snow drifts hugging the waterfront.
+    for (let i = 0; i < 14; i++) {
+      const angle = rng.nextFloat(0, TAU);
+      const radius = rng.nextFloat(2.4, islandRadius - 0.7);
+      stage.trim(
+        Math.cos(angle) * radius,
+        SURFACE_Y + 0.09,
+        Math.sin(angle) * radius,
+        rng.nextFloat(0.5, 0.9),
+        0.14,
+        rng.nextFloat(0.35, 0.6),
+        rng.chance(0.5) ? snow : snowShade,
+        rng.nextFloat(-0.4, 0.4),
+      );
     }
 
-    // Seven colorful Nyhavn townhouses with varied widths
-    const housePalette = [
-      m.houseYellow,
-      m.houseRed,
-      m.houseGreen,
-      m.houseBlue,
-      m.houseOrange,
-      m.housePurple,
-      m.houseTeal,
+    // ── Landmark: copper-green Copenhagen spire on the left third ──
+    const spireX = -3.2;
+    const spireZ = -2.5;
+    stage.trim(spireX, SURFACE_Y + 0.18, spireZ, 1.1, 0.36, 1.1, snowShade);
+    stage.solid(
+      spireX,
+      SURFACE_Y + 0.36 + 1.35,
+      spireZ,
+      0.85,
+      2.7,
+      0.85,
+      mixHex(houseOchre, shadow, 0.35),
+    );
+    stage.trim(spireX, SURFACE_Y + 1.4, spireZ, 0.9, 0.1, 0.9, snow);
+    stage.glow(spireX, SURFACE_Y + 2.3, spireZ + 0.46, 0.3, 0.42, 0.07, tallow);
+    // copper spire: stepped taper + gold ball
+    stage.solid(spireX, SURFACE_Y + 3.14, spireZ, 0.78, 0.2, 0.78, copper);
+    stage.solid(spireX, SURFACE_Y + 3.36, spireZ, 0.6, 0.2, 0.6, copper);
+    stage.solid(spireX, SURFACE_Y + 3.58, spireZ, 0.42, 0.2, 0.42, copper);
+    stage.solid(spireX, SURFACE_Y + 3.8, spireZ, 0.26, 0.2, 0.26, copper);
+    stage.solid(spireX, SURFACE_Y + 4.02, spireZ, 0.12, 0.24, 0.12, copper);
+    stage.glow(spireX, SURFACE_Y + 4.22, spireZ, 0.12, 0.12, 0.12, glow);
+
+    // ── Secondary: six townhouses with uneven Nyhavn widths ──
+    const houseSpecs: { x: number; w: number; h: number; color: number }[] = [
+      { x: -2.15, w: 1.0, h: 2.5, color: houseYellow },
+      { x: -1.2, w: 0.85, h: 2.95, color: houseRed },
+      { x: -0.3, w: 1.25, h: 2.35, color: houseGreen },
+      { x: 0.85, w: 0.8, h: 2.75, color: houseBlue },
+      { x: 1.75, w: 1.15, h: 2.5, color: houseOchre },
+      { x: 2.85, w: 0.95, h: 3.05, color: houseTeal },
     ];
-    const houseWidths = [1.0, 0.8, 1.2, 0.7, 0.9, 0.6, 1.4];
-    const townhouses = new THREE.Group();
-    let cx = -3.4;
-    for (let i = 0; i < 7; i++) {
-      const w = houseWidths[i];
-      const h = 2.4 + (i % 3) * 0.35;
-      const d = 1.5;
-      const g = new THREE.Group();
-      box(w, h, d, housePalette[i], 0, h / 2, 0, g);
-      // stepped roof
-      const roofLayers = Math.max(2, Math.floor(h / 1.0));
-      for (let r = 0; r < roofLayers; r++) {
-        const rw = w + 0.2 - r * (w / (roofLayers + 1));
-        box(rw, 0.2, d + 0.1, m.roofCharcoal, 0, h + 0.1 + r * 0.2, 0, g);
-      }
-      // snow cap
-      box(w + 0.15, 0.1, d + 0.05, m.snow, 0, h + 0.15 + roofLayers * 0.2, 0, g);
-      // glowing windows
-      const win = (wx: number, wy: number) => {
-        box(0.28, 0.42, 0.06, m.hyggeGlow, wx, wy, d / 2 + 0.03, g, false);
-        box(0.32, 0.46, 0.04, m.roofCharcoal, wx, wy, d / 2 + 0.04, g);
-      };
-      win(-w * 0.22, h * 0.55);
-      win(w * 0.22, h * 0.55);
-      win(-w * 0.22, h * 0.25);
-      win(w * 0.22, h * 0.25);
-      // Chimney for some houses
-      if (i % 2 === 0) {
-        box(0.25, 0.6, 0.25, m.roofCharcoal, -w * 0.25, h + 0.4 + roofLayers * 0.2, 0, g);
-      }
-      g.position.set(cx + w / 2, 0, 0);
-      cx += w + 0.25;
-      townhouses.add(g);
-    }
-    townhouses.position.set(0.2, 0.15, -2.4);
-    layer.group.add(townhouses);
-
-    // Wooden ships with masts
-    const buildShip = (sx: number, sz: number, ry: number) => {
-      const s = new THREE.Group();
-      s.userData = { type: 'ship', baseX: sx, baseZ: sz, phase: Math.random() * Math.PI * 2 };
-      box(3.2, 0.45, 0.9, m.hullWood, 0, 0.22, 0, s);
-      box(3.0, 0.2, 0.7, m.mastWood, 0, 0.45, 0, s);
-      const mastX = [-1.0, 0, 1.0];
-      for (let mi = 0; mi < mastX.length; mi++) {
-        const mh = 2.4 + (mi === 1 ? 0.5 : 0);
-        box(0.08, mh, 0.08, m.mastWood, mastX[mi], 0.5 + mh / 2, 0, s);
-        box(0.04, 1.2, 0.6, m.sailWhite, mastX[mi], 0.8 + mh / 2, 0.1, s, false);
-        if (mi < mastX.length - 1) {
-          box(
-            mastX[mi + 1] - mastX[mi],
-            0.04,
-            0.04,
-            m.mastWood,
-            (mastX[mi] + mastX[mi + 1]) / 2,
-            0.5 + mh - 0.2,
-            0,
-            s,
-          );
+    for (let i = 0; i < houseSpecs.length; i++) {
+      const spec = houseSpecs[i];
+      const z = -3.15 + (i % 2) * 0.2;
+      const bodyDepth = 1.35;
+      stage.solid(spec.x, SURFACE_Y + spec.h / 2, z, spec.w, spec.h, bodyDepth, spec.color);
+      // gable roof + snow cap
+      stage.solid(
+        spec.x,
+        SURFACE_Y + spec.h + 0.12,
+        z,
+        spec.w * 0.94,
+        0.24,
+        bodyDepth * 0.9,
+        roofDark,
+      );
+      stage.trim(spec.x, SURFACE_Y + spec.h + 0.3, z, spec.w * 0.9, 0.12, bodyDepth * 0.86, snow);
+      // two lit windows per floor
+      for (let floor = 0; floor < 2; floor++) {
+        const wy = SURFACE_Y + 0.62 + floor * 0.85;
+        if (wy > SURFACE_Y + spec.h - 0.45) continue;
+        for (const dir of [-1, 1]) {
+          const wx = spec.x + dir * spec.w * 0.22;
+          stage.glow(wx, wy, z + bodyDepth / 2 + 0.02, 0.22, 0.3, 0.06, tallow);
+          stage.trim(wx, wy, z + bodyDepth / 2 + 0.04, 0.28, 0.36, 0.04, roofDark);
+          stage.glow(wx, wy, z + bodyDepth / 2 + 0.05, 0.2, 0.26, 0.04, tallow);
         }
       }
-      // Diagonal rigging lines between masts
-      const rig = (x1: number, y1: number, x2: number, y2: number, zOff: number) => {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        const r = box(len, 0.02, 0.02, m.mastWood, (x1 + x2) / 2, (y1 + y2) / 2, zOff, s, false);
-        r.rotation.z = Math.atan2(dy, dx);
-      };
-      rig(mastX[0], 2.2, mastX[1], 1.4, 0.06);
-      rig(mastX[1], 1.55, mastX[2], 2.0, 0.06);
-      rig(mastX[0], 1.6, mastX[1], 0.95, -0.06);
-      rig(mastX[1], 0.95, mastX[2], 1.5, -0.06);
-      s.position.set(sx, -0.2, sz);
-      s.rotation.y = ry;
-      return s;
-    };
-    const ship1 = buildShip(-2.6, 2.0, 0.2);
-    const ship2 = buildShip(2.4, 2.3, -0.25);
-    waterGroup.add(ship1);
-    waterGroup.add(ship2);
-    this._ships.push(ship1, ship2);
-    this._particles.push(ship1, ship2);
-
-    // Copper-green Copenhagen spire silhouette
-    const spire = new THREE.Group();
-    box(0.25, 3.5, 0.25, m.copperPatina, 0, 1.75, 0, spire);
-    box(0.45, 0.12, 0.45, m.copperPatina, 0, 3.56, 0, spire);
-    box(0.08, 0.6, 0.08, m.copperPatina, 0, 4.0, 0, spire);
-    spire.position.set(-1.5, 0.15, -4.2);
-    layer.group.add(spire);
-
-    // Lamp posts
-    const lamp = new THREE.Group();
-    box(0.12, 3.6, 0.12, m.lampPost, 0, 1.8, 0, lamp);
-    box(0.4, 0.2, 0.4, m.lampPost, 0, 3.6, 0, lamp);
-    box(0.3, 0.3, 0.3, m.hyggeGlow, 0, 3.45, 0, lamp, false);
-    lamp.position.set(-3.2, 0, 0.5);
-    layer.group.add(lamp);
-
-    const lamp2 = lamp.clone();
-    lamp2.position.set(3.2, 0, 0.5);
-    layer.group.add(lamp2);
-
-    // Dock bollards
-    for (let x of [-3.5, -1.5, 1.5, 3.5]) {
-      layer.boxMat(0.12, 0.45, 0.12, m.lampPost, x, 0.22, 1.2);
+      // chimney with a snow cap
+      if (i % 2 === 0) {
+        stage.solid(
+          spec.x - spec.w * 0.24,
+          SURFACE_Y + spec.h + 0.4,
+          z - 0.2,
+          0.16,
+          0.5,
+          0.16,
+          roofDark,
+        );
+        stage.trim(
+          spec.x - spec.w * 0.24,
+          SURFACE_Y + spec.h + 0.66,
+          z - 0.2,
+          0.2,
+          0.06,
+          0.2,
+          snow,
+        );
+      }
     }
 
-    // Seagull
-    const seagull = new THREE.Group();
-    box(0.25, 0.06, 0.08, m.seagullWhite, 0, 0, 0, seagull, false);
-    box(0.08, 0.04, 0.04, m.seagullWhite, 0.16, 0.02, 0, seagull, false);
-    box(0.04, 0.04, 0.12, m.seagullWhite, -0.12, 0, 0, seagull, false);
-    seagull.position.set(0, 5.5, 0);
-    seagull.userData = { type: 'seagull', baseY: 5.5, phase: Math.random() * Math.PI * 2 };
-    layer.group.add(seagull);
-    this._particles.push(seagull);
+    // ── Secondary: two wooden sailing ships with masts and rigging ──
+    const buildShip = (length: number, seed: number): THREE.InstancedMesh => {
+      const shipRng = createRng(seed);
+      const cells: InstancedVoxel[] = [];
+      const push = (
+        x: number,
+        y: number,
+        z: number,
+        w: number,
+        h: number,
+        d: number,
+        color: number,
+      ) => {
+        cells.push({ x, y, z, w, h, d, color });
+      };
+      push(0, 0.22, 0, length, 0.4, 0.62, wood);
+      push(0, 0.42, 0, length * 0.94, 0.12, 0.5, shade(wood, 1.15));
+      push(length * 0.32, 0.32, 0, 0.5, 0.24, 0.56, shade(wood, 0.85));
+      push(-length * 0.32, 0.32, 0, 0.5, 0.24, 0.56, shade(wood, 0.85));
+      push(length * 0.46, 0.55, 0, 0.4, 0.1, 0.12, snow);
+      // masts + sails + rigging
+      const mastXs = [-length * 0.28, 0, length * 0.3];
+      mastXs.forEach((mastX, mi) => {
+        const mastH = 2.2 + mi * 0.15;
+        push(mastX, 0.5 + mastH / 2, 0, 0.07, mastH, 0.07, wood);
+        push(mastX, 0.55 + mastH * 0.72, 0, 0.5, 0.06, 0.06, wood);
+        if (mi > 0) {
+          push((mastXs[mi - 1] + mastX) / 2, 0.6 + mastH * 0.55, 0, 0.06, 0.06, 0.06, wood);
+        }
+        // furled sail with a snow line
+        push(mastX, 0.85 + mastH * 0.52, 0.1, 0.42, 0.9, 0.06, mixHex(snow, shadow, 0.35));
+        push(mastX, 1.32 + mastH * 0.52, 0.12, 0.44, 0.08, 0.08, snow);
+      });
+      // rigging diagonals
+      for (let r = 0; r < 3; r++) {
+        push(
+          -length * 0.28 + (r / 2) * length * 0.58,
+          1.5 + r * 0.1,
+          0.05,
+          0.05,
+          1.5,
+          0.05,
+          mixHex(wood, shadow, 0.4),
+        );
+      }
+      const ship = buildInstancedVoxels(cells, { castShadow: true, receiveShadow: true });
+      const angle = shipRng.nextFloat(0.08, 0.6);
+      const radius = shipRng.nextFloat(6.8, 7.4);
+      ship.position.set(Math.cos(angle) * radius, -1.9, Math.sin(angle) * radius);
+      ship.rotation.y = shipRng.nextFloat(-0.5, 0.5);
+      this.group.add(ship);
+      this.floaters.push({
+        object: ship,
+        baseY: -1.9,
+        phase: shipRng.nextFloat(0, TAU),
+        roll: 0.025,
+      });
+      return ship;
+    };
+    buildShip(2.8, hashSeed('dk:ship1'));
+    buildShip(2.2, hashSeed('dk:ship2'));
 
-    // Lights
-    const lP = new THREE.PointLight(0xffaa44, 3.2, 6);
-    lP.position.set(-3.2, 3.4, 0.5);
-    lP.castShadow = true;
-    lP.shadow.mapSize.width = 256;
-    layer.group.add(lP);
-    this._flickerLights.push({ light: lP, base: 3.0, speed: 2.0, amp: 0.15 });
+    // ── Foreground frame: snow-dusted dock, barrels, crates, bollards ──
+    const dockX = 4.5;
+    const dockZ = 2.1;
+    for (let i = 0; i < 6; i++) {
+      stage.solid(dockX - 0.9 + i * 0.36, SURFACE_Y + 0.12, dockZ, 0.36, 0.14, 1.5, wood);
+      stage.trim(dockX - 0.9 + i * 0.36, SURFACE_Y + 0.2, dockZ, 0.34, 0.04, 1.44, snow);
+    }
+    for (const [px, pz] of [
+      [dockX - 1.0, dockZ - 0.7],
+      [dockX + 1.1, dockZ - 0.7],
+      [dockX - 1.0, dockZ + 0.7],
+      [dockX + 1.1, dockZ + 0.7],
+    ]) {
+      stage.solid(px, SURFACE_Y + 0.05, pz, 0.14, 1.0, 0.14, roofDark);
+      stage.trim(px, SURFACE_Y + 0.6, pz, 0.18, 0.06, 0.18, snow);
+    }
+    // barrels + crates
+    for (let i = 0; i < 3; i++) {
+      stage.solid(
+        3.5 + i * 0.42,
+        SURFACE_Y + 0.28,
+        3.0 + i * 0.16,
+        0.34,
+        0.56,
+        0.34,
+        shade(wood, 1.05),
+      );
+      stage.trim(3.5 + i * 0.42, SURFACE_Y + 0.5, 3.0 + i * 0.16, 0.36, 0.06, 0.36, roofDark);
+    }
+    stage.solid(5.4, SURFACE_Y + 0.22, 3.0, 0.5, 0.44, 0.44, wood);
+    stage.trim(5.4, SURFACE_Y + 0.45, 3.0, 0.52, 0.05, 0.46, snow);
 
-    const lP2 = new THREE.PointLight(0xffaa44, 3.2, 6);
-    lP2.position.set(3.2, 3.4, 0.5);
-    layer.group.add(lP2);
-    this._flickerLights.push({ light: lP2, base: 3.0, speed: 2.3, amp: 0.15 });
+    // ── Local warm lights: two harbour lamps + a warm window spill ──
+    const harbourLamp = (x: number, z: number, intensity: number, phase: number): void => {
+      stage.glow(x, SURFACE_Y + 2.0, z, 0.22, 0.26, 0.22, tallow);
+      const light = new THREE.PointLight(glow, intensity, 6.5);
+      light.position.set(x, SURFACE_Y + 1.95, z);
+      this.group.add(light);
+      this.flickers.push({ light, base: intensity, speed: 2.2, amp: 0.5, phase });
+      // lamp post
+      stage.solid(x, SURFACE_Y + 1.0, z, 0.1, 2.0, 0.1, roofDark);
+      stage.trim(x, SURFACE_Y + 2.15, z, 0.34, 0.08, 0.34, roofDark);
+    };
+    harbourLamp(3.9, 1.5, 4.2, 0.3);
+    harbourLamp(-4.2, 0.9, 3.4, 2.1);
+    const windowLight = new THREE.PointLight(glow, 3.2, 8);
+    windowLight.position.set(0.4, SURFACE_Y + 2.1, -2.4);
+    this.group.add(windowLight);
+    this.flickers.push({ light: windowLight, base: 3.2, speed: 1.4, amp: 0.4, phase: 1.2 });
 
-    const hP = new THREE.PointLight(0xff8822, 2.5, 6);
-    hP.position.set(0, 2.0, -1.5);
-    layer.group.add(hP);
-    this._flickerLights.push({ light: hP, base: 2.4, speed: 4.5, amp: 0.3, noise: true });
+    stage.flush(this.group);
+
+    // ── Halo on the quay lamp (single volumetric read) ──
+    this.group.add(
+      buildGlowOrb({
+        color: glow,
+        size: 0.3,
+        position: new THREE.Vector3(3.9, SURFACE_Y + 1.98, 1.5),
+        layers: 2,
+      }),
+    );
+
+    this.waterfall = new Waterfall({
+      radius: islandRadius + 0.25,
+      innerRadius: islandRadius - 0.2,
+      yBase: -0.2,
+      heightMin: 2.2,
+      heightMax: 3.2,
+      color: mixHex(key, 0xcfe0ea, 0.45),
+      opacity: 0.5,
+      density: 0.7,
+    });
+    this.group.add(this.waterfall.group);
 
     this.scene.add(this.group);
   }
 
   protected buildAtmosphere(): void {
-    const layer = this.group.children[1] as THREE.Group;
-    // Harbor water shimmer
-    const shimmer = createSurfaceShimmer(layer, 16, 0xffddaa, { x: 8, z: 8, y: -0.35 });
-    this._particles.push(...shimmer);
+    const art = this.art;
+    const glow = art.glow ?? 0xffbe6b;
+    const key = art.key ?? 0xa9c4e8;
+    const veil = art.veil ?? 0x1a2634;
+    const rng = createRng(hashSeed('denmark:atmosphere'));
 
-    // Lamp glows
-    const lampGlow1 = createLanternGlow(
-      layer,
-      new THREE.Vector3(-3.2, 3.45, 0.5),
-      0xffbb44,
-      0.8,
-      4,
-    );
-    this._flickerLights.push({ light: lampGlow1.light, base: 0.7, speed: 4, amp: 0.1 });
-    const lampGlow2 = createLanternGlow(layer, new THREE.Vector3(3.2, 3.45, 0.5), 0xffbb44, 0.8, 4);
-    this._flickerLights.push({ light: lampGlow2.light, base: 0.7, speed: 4.5, amp: 0.1 });
-
-    // Warm window glow point light
-    const winLight = new THREE.PointLight(0xffbb44, 1.5, 5);
-    winLight.position.set(0, 2.0, -1.5);
-    layer.add(winLight);
-    this._flickerLights.push({ light: winLight, base: 1.2, speed: 3, amp: 0.15, noise: true });
-
-    // Dockside mist
-    this._mistPuffs = createRisingPuffs(
-      layer,
-      6,
-      0x8899aa,
-      { x: 8, z: 8, yMin: 0.1, yMax: 1.2 },
-      0.4,
-    );
-    for (const p of this._mistPuffs) {
-      p.position.y = 0.15 + Math.random() * 0.8;
+    // 1) Snow flurries (the base snow system is a separate, shared layer).
+    const snow: MoteSpec[] = [];
+    for (let i = 0; i < 34; i++) {
+      snow.push({
+        x: rng.nextFloat(-6.5, 6.5),
+        y: rng.nextFloat(4.5, 8.5),
+        z: rng.nextFloat(-6.5, 6.5),
+        w: 0.1,
+        h: 0.1,
+        d: 0.1,
+        color: mixHex(key, 0xffffff, 0.7),
+        mode: 'fall',
+        speed: rng.nextFloat(0.3, 0.55),
+        amp: rng.nextFloat(0.1, 0.4),
+        phase: rng.next(),
+        span: 9,
+      });
     }
-    this._particles.push(...this._mistPuffs);
+    this.motes.push(new MoteField(snow, { opacity: 0.85 }));
 
-    // Snow
-    const sg = new THREE.BoxGeometry(0.08, 0.08, 0.08);
-    for (let i = 0; i < 40; i++) {
-      const p = new THREE.Mesh(sg, MaterialCache.getBasic(0xffffff));
-      p.position.set(Math.random() * 10 - 5, Math.random() * 7 + 0.3, Math.random() * 10 - 5);
-      p.userData = {
-        type: 'snow',
-        speedY: 0.018 + Math.random() * 0.012,
-        driftX: (Math.random() - 0.5) * 0.004,
-      };
-      layer.add(p);
-      this._particles.push(p);
-    }
-
-    // Chimney smoke from houses
-    const smokeGeo = new THREE.BoxGeometry(0.16, 0.16, 0.16);
-    const smokeMat = new THREE.MeshLambertMaterial({
-      color: 0x888888,
-      transparent: true,
-      opacity: 0.35,
-    });
+    // 2) Chimney smoke rising off the townhouse roofs.
+    const smoke: MoteSpec[] = [];
     for (let i = 0; i < 12; i++) {
-      const p = new THREE.Mesh(smokeGeo, smokeMat.clone());
-      const hx = -2.5 + Math.random() * 5;
-      p.position.set(hx, 3.5 + Math.random() * 0.5, -2.4 + (Math.random() - 0.5) * 0.3);
-      p.userData = {
-        type: 'smoke',
-        speedY: 0.01 + Math.random() * 0.01,
-        swaySpeed: 0.8 + Math.random() * 1.2,
-        swayAmp: 0.005 + Math.random() * 0.007,
-        age: Math.random() * 2,
-        maxLife: 2.0 + Math.random() * 0.8,
-      };
-      layer.add(p);
-      this._particles.push(p);
-      this._smokePuffs.push(p);
+      smoke.push({
+        x: rng.nextFloat(-2.6, 3.0),
+        y: SURFACE_Y + 3.4,
+        z: rng.nextFloat(-3.4, -2.8),
+        w: rng.nextFloat(0.14, 0.26),
+        h: rng.nextFloat(0.14, 0.26),
+        d: rng.nextFloat(0.14, 0.26),
+        color: mixHex(veil, 0x9aa4ae, 0.6),
+        mode: 'rise',
+        speed: rng.nextFloat(0.07, 0.12),
+        amp: rng.nextFloat(0.1, 0.3),
+        phase: rng.next(),
+        span: 3.6,
+      });
     }
+    this.motes.push(new MoteField(smoke, { opacity: 0.28 }));
+
+    // 3) Warm harbour glitter on the black water.
+    const glitter: MoteSpec[] = [];
+    for (let i = 0; i < 20; i++) {
+      const angle = rng.nextFloat(0.02, 1.3);
+      const radius = rng.nextFloat(6.4, 7.6);
+      glitter.push({
+        x: Math.cos(angle) * radius,
+        y: -1.87,
+        z: Math.sin(angle) * radius,
+        w: rng.nextFloat(0.12, 0.24),
+        h: 0.03,
+        d: rng.nextFloat(0.6, 1.4),
+        color: mixHex(glow, 0xd9e6f2, 0.3),
+        mode: 'drift',
+        speed: 0.16,
+        amp: 0.14,
+        phase: rng.next(),
+        span: 0.9,
+      });
+    }
+    this.motes.push(new MoteField(glitter, { additive: true, opacity: 0.5 }));
+
+    for (const mote of this.motes) this.group.add(mote.mesh);
   }
 
   protected updateAtmosphere(_dt: number, time: number): void {
-    // Waterfall
-    this._waterfall?.update(time);
-
-    // Water tiles
-    for (const w of this._waterTiles) {
-      w.position.y = w.userData.baseY + Math.sin(time * 1.5 + w.userData.phase) * 0.02;
+    this.waterfall?.update(time);
+    for (const mote of this.motes) mote.update(time);
+    for (const flicker of this.flickers) {
+      flicker.light.intensity =
+        flicker.base + Math.sin(time * flicker.speed + flicker.phase) * flicker.amp;
     }
-
-    updateRisingPuffs(time, this._mistPuffs);
-
-    for (const p of this._particles) {
-      const ud = p.userData;
-      if (!ud) continue;
-      if (ud.type === 'shimmer' && p instanceof THREE.Mesh) {
-        updateSurfaceShimmer(time, [p]);
-      } else if (ud.type === 'ship' && p instanceof THREE.Group) {
-        p.rotation.z = Math.sin(time * 1.2 + ud.phase) * 0.02;
-        p.rotation.x = Math.cos(time * 0.9 + ud.phase) * 0.015;
-        p.position.y = -0.2 + Math.sin(time * 1.0 + ud.phase) * 0.03;
-      } else if (ud.type === 'seagull' && p instanceof THREE.Group) {
-        p.position.x += 0.012;
-        p.position.y = ud.baseY + Math.sin(time * 2 + ud.phase) * 0.25;
-        if (p.position.x > 6) p.position.x = -6;
-      }
-    }
-  }
-
-  update(dt: number, time: number): void {
-    for (const p of this._particles) {
-      const ud = p.userData;
-      if (!ud || ud.type !== 'smoke') continue;
-      if (!(p instanceof THREE.Mesh)) continue;
-      p.position.y += ud.speedY;
-      p.position.x += Math.sin(time * ud.swaySpeed) * ud.swayAmp;
-      p.position.z += Math.cos(time * ud.swaySpeed) * ud.swayAmp;
-      ud.age += dt;
-      if (ud.age > ud.maxLife || p.position.y > 9) {
-        p.position.set(-2.5 + Math.random() * 5, 3.5, -2.4 + (Math.random() - 0.5) * 0.3);
-        ud.age = 0;
-      }
-    }
-    for (const fl of this._flickerLights) {
-      updateFlicker(time, fl);
+    for (const floater of this.floaters) {
+      floater.object.position.y = floater.baseY + Math.sin(time * 0.8 + floater.phase) * 0.035;
+      floater.object.rotation.z = Math.sin(time * 0.95 + floater.phase) * floater.roll;
     }
   }
 
   destroy(): void {
-    this._waterfall?.dispose();
-    this._waterfall = null;
-    this._mistPuffs = [];
-    this._smokePuffs = [];
-    this._waterTiles = [];
-    this._ships = [];
-    this._particles = [];
-    this._flickerLights = [];
+    this.waterfall?.dispose();
+    this.waterfall = null;
+    this.motes.length = 0;
+    this.flickers.length = 0;
+    this.floaters.length = 0;
     super.destroy();
   }
 }

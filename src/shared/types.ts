@@ -221,6 +221,47 @@ export interface BaitConfig {
 }
 
 // ===== Location =====
+
+/** Post-processing overrides for a single sanctuary (see rendering/PostFX.ts). */
+export interface ArtGradeParams {
+  exposure?: number;
+  contrast?: number;
+  saturation?: number;
+  warmth?: number;
+  lift?: number;
+  bloom?: number;
+  bloomThreshold?: number;
+  vignette?: number;
+  dither?: number;
+}
+
+/**
+ * Optional art-direction block for a sanctuary (v2 art pass).
+ * Every field is optional so older saves/themes keep working; BaseLocation
+ * falls back to the colour fields above when a value is missing.
+ */
+export interface LocationArtTheme {
+  /** Main directional light colour. */
+  key?: number;
+  keyIntensity?: number;
+  /** Secondary / rim light colour. */
+  fill?: number;
+  fillIntensity?: number;
+  /** Ambient + bounce colour; never pure black. */
+  shadow?: number;
+  /** Landmark accent colour (the one saturated colour in the frame). */
+  accent?: number;
+  /** Lamp / window / neon colour. */
+  glow?: number;
+  /** Fog + far-layer colour. */
+  veil?: number;
+  /** Background silhouette language. */
+  silhouette?: 'ridge' | 'forest' | 'city' | 'dunes' | 'ice' | 'none';
+  /** Extra particle count on top of the base atmosphere. */
+  particles?: number;
+  grade?: ArtGradeParams;
+}
+
 export interface LocationTheme {
   ambient: number;
   ambientIntensity: number;
@@ -239,9 +280,13 @@ export interface LocationTheme {
     stone: number;
     earth: number;
     grass: number;
+    /** Scale the island footprint (default 1). */
+    radiusScale?: number;
   };
-  /** Optional scene background color (for locations needing a dark sky). */
+  /** Optional scene background colour (for locations needing a dark sky). */
   bgColor?: number;
+  /** v2 art-direction overrides (lighting, palette, grading, silhouette). */
+  art?: LocationArtTheme;
   /** Atmosphere tuning: soul-driven ambience, weather fog, etc. */
   atmosphere?: {
     /** Color used for soul-awakening warm tint */

@@ -1,7 +1,7 @@
 // ===== src/renderer/roguelike/RunUI.ts =====
-// Camp, charm picker, result panels. Uses GameStateManager for persistence.
-// Location selection in camp. Charm picker respects charmSlots upgrade.
-// This is now a lightweight coordinator; individual panels live in ./ui/.
+// Run coordinator: top HUD (location / tension / line durability / casts / gold),
+// run-event popup, and the camp -> charm -> bait -> result flow.
+// Individual panels live in ./ui/. Styling comes from src/styles/main.css.
 
 import { EventBus } from '../core/EventBus';
 import { RunManager } from './RunManager';
@@ -13,15 +13,30 @@ import { ALL_CHARMS } from './charm-data';
 import { ALL_RELICS } from './relic-data';
 import { GameEvents } from '../../shared/events';
 import { ModifierRarity } from '../../shared/enums';
-import { BAITS } from '../../shared/constants';
+import { BALANCE } from '../../shared/constants';
+import { LOCATIONS } from '../data/location-data';
 import { i18n } from '../i18n/I18n';
-import { d, toast } from './ui/run-ui-helpers';
+import { svgIcon, charmIconName } from '../ui/icons';
+import type { IconName } from '../ui/icons';
 import { THEME } from '../ui/theme';
 import { CampPanel } from './ui/CampPanel';
 import { CharmPicker } from './ui/CharmPicker';
 import { BaitPicker } from './ui/BaitPicker';
 import { ResultPanel } from './ui/ResultPanel';
 import type { RunEvent, Relic } from '../../shared/types';
+
+const EVENT_ICONS: Record<string, IconName> = {
+  evt_blessing: 'soul',
+  evt_storm: 'warn',
+  evt_frenzy: 'fish',
+  evt_ancient_relic: 'relic',
+  evt_mysterious_stranger: 'link',
+  evt_floating_chest: 'relic',
+  evt_moonlight: 'sparkle',
+  evt_tangled_line: 'tension',
+  evt_school: 'fish',
+  evt_whirlpool: 'tension',
+};
 
 export class RunUI {
   private eventBus: EventBus;
@@ -41,15 +56,27 @@ export class RunUI {
 
   // Run HUD
   private runHUD!: HTMLDivElement;
-  private castsLabel!: HTMLSpanElement;
-  private duraLabel!: HTMLSpanElement;
-  private runEarningsLabel!: HTMLSpanElement;
-  private synergyLabel!: HTMLSpanElement;
-  private baitLabel!: HTMLSpanElement;
+  private locName!: HTMLSpanElement;
+  private locIdx!: HTMLSpanElement;
+  private castsValue!: HTMLSpanElement;
+  private goldValue!: HTMLSpanElement;
+  private essenceValue!: HTMLSpanElement;
   private charmIcons!: HTMLSpanElement;
-  private goldLabel!: HTMLSpanElement;
+  private synergyLabel!: HTMLSpanElement;
+  private tensionMeter!: HTMLDivElement;
+  private tensionFill!: HTMLElement;
+  private tensionValue!: HTMLSpanElement;
+  private duraMeter!: HTMLDivElement;
+  private duraFill!: HTMLElement;
+  private duraValue!: HTMLSpanElement;
   private endBtn!: HTMLDivElement;
-  private _campBtn!: HTMLDivElement;
+
+  private _lastCasts = -1;
+  private _lastGold = -1;
+  private _lastEssence = -1;
+  private _lastTension = -1;
+  private _lastDura = -1;
+  private _locationId = 'japan';
 
   private unsubs: (() => void)[] = [];
 
@@ -113,153 +140,198 @@ export class RunUI {
   // ══ Run HUD ══
 
   private _buildRunHUD(): void {
-    const hudShadow = '0 0 3px rgba(0,0,0,0.7), 0 1px 2px rgba(0,0,0,0.5)';
-    this.runHUD = d(`
-      position: absolute; top: 28px; left: 0; right: 0;
-      display: none; align-items: center; justify-content: space-between;
-      padding: 4px 10px; pointer-events: none;
-    `);
-    const left = d(
-      `display: flex; align-items: center; gap: 8px; font-size: 9px; color: #f0f0f0; text-shadow: ${hudShadow};`,
-    );
-    this.castsLabel = document.createElement('span');
-    this.duraLabel = document.createElement('span');
-    this.runEarningsLabel = document.createElement('span');
-    this.runEarningsLabel.style.cssText = 'color: ${THEME.accent.goldText}; font-weight: bold;';
-    this.charmIcons = document.createElement('span');
-    this.synergyLabel = document.createElement('span');
-    this.synergyLabel.style.cssText =
-      'color: ${THEME.accent.purple}; font-size: 8px; font-weight: bold;';
-    this.baitLabel = document.createElement('span');
-    this.baitLabel.style.cssText = 'color: #f0f0f0; font-size: 8px;';
-    left.append(
-      this.castsLabel,
-      this.duraLabel,
-      this.runEarningsLabel,
-      this.synergyLabel,
-      this.charmIcons,
-      this.baitLabel,
-    );
-    this.runHUD.appendChild(left);
+    this.runHUD = document.createElement('div');
+    this.runHUD.id = 'run-hud';
 
-    const right = d('display: flex; align-items: center; gap: 8px;');
-    this.goldLabel = d(
-      `font-size: 9px; color: ${THEME.accent.goldText}; font-weight: bold; text-shadow: ${hudShadow};`,
-      i18n.t('run.goldEssence', { '0': this.gsm.gold, '1': this.gsm.essence }),
-    );
-    this.endBtn = d(
-      `
-      font-size: 8px; color: ${THEME.accent.red}; cursor: pointer; font-weight: bold;
-      pointer-events: all; padding: 3px 8px;
-      border: 1px solid rgba(248,113,113,0.4); border-radius: ${THEME.radius.md};
-      background: rgba(0,0,0,0.25); display: none;
-      transition: background 0.15s, border-color 0.15s;
-    `,
-      i18n.t('camp.endRun'),
-    );
-    this.endBtn.addEventListener('mouseenter', () => {
-      this.endBtn.style.background = 'rgba(248,113,113,0.2)';
-      this.endBtn.style.borderColor = 'rgba(248,113,113,0.7)';
-    });
-    this.endBtn.addEventListener('mouseleave', () => {
-      this.endBtn.style.background = 'rgba(0,0,0,0.25)';
-      this.endBtn.style.borderColor = 'rgba(248,113,113,0.4)';
-    });
+    const loc = document.createElement('div');
+    loc.className = 'hud-loc';
+    loc.innerHTML = `${svgIcon('pin', 11)}<span class="hud-loc__name" id="hud-loc-name">-</span><span class="hud-loc__idx"></span>`;
+    this.runHUD.appendChild(loc);
+    this.locName = loc.querySelector('#hud-loc-name') as HTMLSpanElement;
+    this.locIdx = loc.querySelector('.hud-loc__idx') as HTMLSpanElement;
+
+    const divider = document.createElement('span');
+    divider.className = 'hud-divider';
+    this.runHUD.appendChild(divider);
+
+    const meters = document.createElement('div');
+    meters.className = 'hud-meters';
+
+    const tensionRow = document.createElement('div');
+    tensionRow.className = 'hud-meter';
+    tensionRow.innerHTML = `${svgIcon('tension', 10)}<span class="ss-bar"><i id="hud-tension-fill"></i></span><span class="hud-meter__value">0</span>`;
+    meters.appendChild(tensionRow);
+    this.tensionMeter = tensionRow;
+    this.tensionFill = tensionRow.querySelector('#hud-tension-fill') as HTMLElement;
+    this.tensionValue = tensionRow.querySelector('.hud-meter__value') as HTMLSpanElement;
+
+    const duraRow = document.createElement('div');
+    duraRow.className = 'hud-meter';
+    duraRow.innerHTML = `${svgIcon('durability', 10)}<span class="ss-bar"><i id="hud-dura-fill" class="is-sage"></i></span><span class="hud-meter__value">100</span>`;
+    meters.appendChild(duraRow);
+    this.duraMeter = duraRow;
+    this.duraFill = duraRow.querySelector('#hud-dura-fill') as HTMLElement;
+    this.duraValue = duraRow.querySelector('.hud-meter__value') as HTMLSpanElement;
+
+    this.runHUD.appendChild(meters);
+
+    this.charmIcons = document.createElement('span');
+    this.charmIcons.className = 'hud-charms';
+    this.runHUD.appendChild(this.charmIcons);
+
+    this.synergyLabel = document.createElement('span');
+    this.synergyLabel.className = 'hud-charms';
+    this.runHUD.appendChild(this.synergyLabel);
+
+    const res = document.createElement('div');
+    res.className = 'hud-res';
+    res.innerHTML = `
+      <span class="hud-chip">${svgIcon('rod', 11)}<span class="hud-chip__value">-</span></span>
+      <span class="hud-chip">${svgIcon('coin', 11)}<span class="hud-chip__value">-</span></span>
+      <span class="hud-chip hud-chip--essence">${svgIcon('sparkle', 11)}<span class="hud-chip__value">-</span></span>`;
+    this.runHUD.appendChild(res);
+    const chips = res.querySelectorAll('.hud-chip__value');
+    this.castsValue = chips[0] as HTMLSpanElement;
+    this.goldValue = chips[1] as HTMLSpanElement;
+    this.essenceValue = chips[2] as HTMLSpanElement;
+
+    const actions = document.createElement('div');
+    actions.className = 'hud-actions';
+    this.endBtn = document.createElement('div');
+    this.endBtn.className = 'hud-btn hud-btn--danger';
+    this.endBtn.innerHTML = `${svgIcon('back', 10)}<span>${i18n.t('hud.endRun')}</span>`;
     this.endBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (!this.runManager.canEndVoluntarily) {
-        toast(i18n.t('notify.catchFirst'));
+        this._toast(i18n.t('notify.catchFirst'));
         return;
       }
       this.runManager.endRunVoluntarily();
     });
-    const campBtn = d(
-      `
-      font-size: 9px; color: ${THEME.accent.amber}; cursor: pointer; font-weight: bold;
-      pointer-events: all; padding: 3px 8px;
-      border: 1px solid rgba(251,191,36,0.4); border-radius: ${THEME.radius.md};
-      background: rgba(0,0,0,0.25); display: none;
-      transition: background 0.15s, border-color 0.15s;
-    `,
-      '🏕️',
-    );
-    campBtn.addEventListener('mouseenter', () => {
-      campBtn.style.background = 'rgba(251,191,36,0.2)';
-      campBtn.style.borderColor = 'rgba(251,191,36,0.7)';
-    });
-    campBtn.addEventListener('mouseleave', () => {
-      campBtn.style.background = 'rgba(0,0,0,0.25)';
-      campBtn.style.borderColor = 'rgba(251,191,36,0.4)';
-    });
-    campBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (!this.runManager.canEndVoluntarily) {
-        toast(i18n.t('notify.catchFirst'));
-        return;
-      }
-      this.runManager.endRunVoluntarily();
-    });
-    right.append(this.goldLabel, campBtn, this.endBtn);
-    this._campBtn = campBtn;
-    this.runHUD.appendChild(right);
+    actions.appendChild(this.endBtn);
+    this.runHUD.appendChild(actions);
+
     document.body.appendChild(this.runHUD);
   }
 
   private _subscribe(): void {
     this.unsubs.push(
-      this.eventBus.on(GameEvents.RUN_START, () => {
+      this.eventBus.on(GameEvents.RUN_START, (p) => {
+        this._locationId = p.locationId;
         this.runHUD.style.display = 'flex';
-        this._campBtn.style.display = 'block';
-        this.endBtn.style.display = 'block';
-        this.charmIcons.textContent = this.runManager.charms.map((c) => c.icon).join(' ');
-        const synergies = this.runManager.modStats?.synergies ?? [];
-        this.synergyLabel.textContent =
-          synergies.length > 0 ? `🔗 ${synergies.map((s) => s.name).join(' · ')}` : '';
+        this.endBtn.style.display = 'inline-flex';
+        this._renderLocation();
+        this._renderCharms();
+        this._lastCasts = -1;
+        this._lastGold = -1;
+        this._lastEssence = -1;
+        this._updateRunHUD();
+        this._updateMeters(0, this.runManager.maxDurability);
         this.sceneUI.hideBackdrop();
         this.sceneUI.hideStart();
-        this._updateRunHUD();
       }),
       this.eventBus.on(GameEvents.RUN_CAST_CONSUMED, () => this._updateRunHUD()),
-      this.eventBus.on(GameEvents.FISHING_REEL_UPDATE, () => this._updateRunHUD()),
       this.eventBus.on(GameEvents.FISHING_CATCH, () => this._updateRunHUD()),
+      this.eventBus.on(GameEvents.FISHING_REEL_UPDATE, (p) => {
+        this._updateMeters(p.tension, p.lineDurability);
+        this._updateRunHUD();
+      }),
+      this.eventBus.on(GameEvents.GAME_GOLD_CHANGE, () => this._updateRunHUD()),
       this.eventBus.on(GameEvents.RUN_END, (p) => {
         this.resultPanel.show(p.rewards, {
           onBackToCamp: () => this.showCampPanel(),
           onFishAgain: () => this._showCharmPicker(),
         });
         this.runHUD.style.display = 'none';
-        this._campBtn.style.display = 'none';
         this.endBtn.style.display = 'none';
       }),
       this.eventBus.on(GameEvents.RUN_EVENT, (p) => this._showEventToast(p.event)),
       this.eventBus.on(GameEvents.DAILY_QUEST_COMPLETED, (p) => {
-        toast(`✅ Daily quest complete! +${p.gold ?? 0}G +${p.essence ?? 0}✨`);
+        this._toast(
+          i18n.t('notify.dailyDone', { '0': p.gold ?? 0, '1': p.essence ?? 0 }),
+          'sparkle',
+        );
       }),
       this.eventBus.on(GameEvents.DAILY_FREE_BAIT_CLAIMED, (p) => {
-        toast(`🪱 Free bait claimed! +${p.amount ?? 3} ${p.baitId ?? 'bait'}`);
+        this._toast(i18n.t('notify.freeBait', { '0': p.amount ?? 3 }), 'bait');
       }),
     );
   }
 
-  private _updateRunHUD(): void {
-    this.castsLabel.textContent = i18n.t('run.casts', { '0': this.runManager.remainingCasts });
-    this.duraLabel.textContent = i18n.t('run.durability', {
-      '0': Math.floor(this.runManager.durability),
-    });
+  private _renderLocation(): void {
+    const loc = LOCATIONS.find((l) => l.id === this._locationId);
+    if (!loc) return;
+    const idx = LOCATIONS.indexOf(loc) + 1;
+    this.locName.textContent = i18n.lang === 'zh' ? loc.name.zh : loc.country;
+    this.locIdx.textContent = `${String(idx).padStart(2, '0')}/${LOCATIONS.length}`;
+    const accent = '#' + (loc.theme?.uiAccent ?? 0xa9c3a0).toString(16).padStart(6, '0');
+    document.documentElement.style.setProperty('--location-accent', accent);
+  }
 
-    const baitId = this.runManager.currentBait;
-    const baitDef = BAITS.find((b) => b.id === baitId);
-    const charges = this.runManager.remainingBaitCharges;
-    this.baitLabel.textContent =
-      baitDef && baitId !== 'bait_worm'
-        ? `🪱 ${i18n.lang === 'zh' ? baitDef.name.zh : baitDef.name.en} x${charges}`
+  private _renderCharms(): void {
+    const charms = this.runManager.charms;
+    this.charmIcons.innerHTML = charms
+      .slice(0, 4)
+      .map(
+        (charm) =>
+          `<span title="${i18n.charm(charm.id).name}">${svgIcon(charmIconName(charm.tags), 11)}</span>`,
+      )
+      .join('');
+    const synergies = this.runManager.modStats?.synergies ?? [];
+    this.synergyLabel.innerHTML =
+      synergies.length > 0
+        ? `${svgIcon('link', 10)}<span>${synergies.map((s) => s.name).join(' · ')}</span>`
         : '';
-    const runEarnings = this.runManager.fishCaughtThisRun.reduce((sum, f) => sum + f.goldEarned, 0);
-    this.runEarningsLabel.textContent = runEarnings > 0 ? `💰+${runEarnings}` : '';
-    this.goldLabel.textContent = i18n.t('run.goldEssence', {
-      '0': this.gsm.gold,
-      '1': this.gsm.essence,
-    });
+  }
+
+  private _updateMeters(tension: number, lineDurability: number): void {
+    const t = Math.round(Math.max(0, Math.min(100, tension)));
+    if (t !== this._lastTension) {
+      this._lastTension = t;
+      this.tensionFill.style.transform = `scaleX(${t / 100})`;
+      this.tensionValue.textContent = String(t);
+      this.tensionMeter.classList.toggle('is-danger', t > BALANCE.tensionYellowMax);
+    }
+    const max = Math.max(1, this.runManager.maxDurability);
+    const durability = Math.round(Math.max(0, Math.min(100, (lineDurability / max) * 100)));
+    if (durability !== this._lastDura) {
+      this._lastDura = durability;
+      this.duraFill.style.transform = `scaleX(${durability / 100})`;
+      this.duraValue.textContent = String(durability);
+      this.duraMeter.classList.toggle('is-danger', durability < 25);
+    }
+  }
+
+  private _updateRunHUD(): void {
+    const casts = this.runManager.remainingCasts;
+    if (casts !== this._lastCasts) {
+      this._lastCasts = casts;
+      this.castsValue.textContent = String(casts);
+    }
+    if (this.gsm.gold !== this._lastGold) {
+      this._lastGold = this.gsm.gold;
+      this.goldValue.textContent = String(this.gsm.gold);
+    }
+    if (this.gsm.essence !== this._lastEssence) {
+      this._lastEssence = this.gsm.essence;
+      this.essenceValue.textContent = String(this.gsm.essence);
+    }
+    this._broadcastResources();
+  }
+
+  /** Snapshot for the FishingUI bottom resource strip. */
+  private _broadcastResources(): void {
+    const runGold = this.runManager.fishCaughtThisRun.reduce((sum, f) => sum + f.goldEarned, 0);
+    document.dispatchEvent(
+      new CustomEvent('soul:resources', {
+        detail: {
+          casts: this.runManager.remainingCasts,
+          gold: this.gsm.gold,
+          essence: this.gsm.essence,
+          runGold,
+        },
+      }),
+    );
   }
 
   // ══ Charm / Bait / Result flow ══
@@ -293,47 +365,42 @@ export class RunUI {
     });
   }
 
-  // ══ Event Toast ══
+  // ══ Run event popup ══
 
   private _showEventToast(event: RunEvent): void {
     const evtI18n = i18n.event(event.id);
-    const toastEl = d(
-      `
-      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
-      padding: 10px 18px; background: ${THEME.panel.bg};
-      border: ${THEME.panel.border}; border-radius: ${THEME.panel.radius};
-      color: ${THEME.text.primary}; text-align: center; z-index: 250;
-      font-family: ${THEME.panel.font}; font-size: 9px;
-      pointer-events: all; min-width: 200px;
-    `,
-      `<div style="font-size:11px;margin-bottom:3px;">${evtI18n.name}</div>
-       <div style="color:#888;">${evtI18n.desc}</div>`,
-    );
+    const card = document.createElement('div');
+    card.className = 'event-card';
+    card.innerHTML = `
+      <div class="event-card__head">
+        <span class="event-card__icon">${svgIcon(EVENT_ICONS[event.id] ?? 'warn', 14)}</span>
+        <span class="event-card__name">${evtI18n.name}</span>
+      </div>
+      <div class="event-card__desc">${evtI18n.desc}</div>`;
 
     if ((event.choices?.length ?? 0) > 0) {
-      const btns = d('display: flex; gap: 4px; justify-content: center; margin-top: 6px;');
+      const choices = document.createElement('div');
+      choices.className = 'event-card__choices';
       (event.choices ?? []).forEach((choice) => {
-        const btn = d(
-          `
-          padding: 3px 10px; background: rgba(255,255,255,0.06);
-          border: 1px solid rgba(255,255,255,0.1); color: #ccc;
-          font-size: 8px; cursor: pointer; border-radius: ${THEME.radius.md};
-        `,
-          choice.label,
-        );
+        const btn = document.createElement('div');
+        btn.className = 'ss-btn ss-btn--primary';
+        btn.style.justifyContent = 'flex-start';
+        btn.innerHTML = `${svgIcon('chevronRight', 10)}<span>${choice.label}</span>`;
         btn.addEventListener('click', () => {
-          toastEl.remove();
+          card.remove();
           this._applyChoice(choice);
         });
-        btns.appendChild(btn);
+        choices.appendChild(btn);
       });
-      toastEl.appendChild(btns);
+      card.appendChild(choices);
     } else {
-      toastEl.addEventListener('click', () => toastEl.remove());
+      card.style.cursor = 'pointer';
+      card.title = i18n.t('ui.close');
+      card.addEventListener('click', () => card.remove());
     }
-    document.body.appendChild(toastEl);
-    setTimeout(() => {
-      if (toastEl.parentElement) toastEl.remove();
+    document.body.appendChild(card);
+    window.setTimeout(() => {
+      if (card.parentElement) card.remove();
     }, 7000);
   }
 
@@ -344,72 +411,87 @@ export class RunUI {
           id: 'evt_progress',
           name: 'Spirit Blessing',
           description: '+3 progress rate',
-          icon: '✨',
+          icon: '',
           rarity: ModifierRarity.Common,
           stackable: false,
           maxStacks: 1,
           effects: [{ type: 'stat_add', stat: 'fishProgressRate', value: 3 }],
           tags: ['event'],
         });
-        toast(i18n.t('toast.blessing_progress'));
+        this._toast(i18n.t('toast.blessing_progress'), 'soul');
         break;
       case 'blessing_protection':
         this.runManager.addModifier({
           id: 'evt_protect',
           name: 'Spirit Protection',
           description: '-2 line wear',
-          icon: '🛡️',
+          icon: '',
           rarity: ModifierRarity.Common,
           stackable: false,
           maxStacks: 1,
           effects: [{ type: 'stat_add', stat: 'lineWearRate', value: -2 }],
           tags: ['event'],
         });
-        toast(i18n.t('toast.blessing_protection'));
+        this._toast(i18n.t('toast.blessing_protection'), 'durability');
         break;
       case 'relic_risk':
         if (Math.random() < 0.5) {
-          toast(i18n.t('toast.relic_risk_nothing'));
+          this._toast(i18n.t('toast.relic_risk_nothing'), 'relic');
         } else {
           this.runManager.applyLineDamage(20);
-          toast(i18n.t('toast.relic_risk_damage'));
+          this._toast(i18n.t('toast.relic_risk_damage'), 'warn');
         }
         break;
       case 'chest_gamble':
         if (Math.random() < 0.5) {
           this.gsm.addGold(200, 'event');
           this._updateRunHUD();
-          toast(i18n.t('toast.chest_gold'));
+          this._toast(i18n.t('toast.chest_gold'), 'coin');
         } else {
           this.runManager.applyLineDamage(15);
-          toast(i18n.t('toast.chest_curse'));
+          this._toast(i18n.t('toast.chest_curse'), 'warn');
         }
         break;
       case 'tangle_cut':
         this.runManager.consumeCasts(2);
-        toast(i18n.t('toast.tangle_cut'));
+        this._toast(i18n.t('toast.tangle_cut'), 'tension');
         break;
       case 'tangle_patient':
         this.runManager.applyLineDamage(4);
-        toast(i18n.t('toast.tangle_patient'));
+        this._toast(i18n.t('toast.tangle_patient'), 'durability');
         break;
       case 'whirlpool_reel':
         this.runManager.applyLineDamage(10);
-        toast(i18n.t('toast.whirlpool_reel'));
+        this._toast(i18n.t('toast.whirlpool_reel'), 'warn');
         break;
       case 'whirlpool_slack':
         this.runManager.consumeCasts(3);
-        toast(i18n.t('toast.whirlpool_slack'));
+        this._toast(i18n.t('toast.whirlpool_slack'), 'tension');
         break;
-      case 'trade_casts':
+      case 'trade_casts': {
         this.runManager.consumeCasts(5);
         const rareCharms = ALL_CHARMS.filter((c) => c.rarity === ModifierRarity.Rare);
         if (rareCharms.length) {
           this.runManager.addModifier(rareCharms[Math.floor(Math.random() * rareCharms.length)]);
-          toast(i18n.t('toast.trade_charm'));
+          this._toast(i18n.t('toast.trade_charm'), 'charm');
         }
         break;
+      }
     }
+  }
+
+  // ══ Helpers ══
+
+  private _toast(msg: string, icon: IconName = 'sparkle'): void {
+    const node = document.createElement('div');
+    node.className = 'ss-toast';
+    node.innerHTML = `${svgIcon(icon, 12)}<span>${msg}</span>`;
+    document.body.appendChild(node);
+    window.setTimeout(() => {
+      node.style.opacity = '0';
+      node.style.transition = `opacity ${THEME.motion.slow} ${THEME.motion.ease}`;
+      window.setTimeout(() => node.remove(), 260);
+    }, 2000);
   }
 
   private _closePanels(): void {

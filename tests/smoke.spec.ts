@@ -1,5 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test';
 import { join } from 'path';
+import { mkdtempSync } from 'fs';
+import { tmpdir } from 'os';
 
 /**
  * SoulSanctuary — Electron Smoke Test
@@ -11,7 +13,9 @@ import { join } from 'path';
  * 4. Drag bar with orb and close button exist
  * 5. Clicking START opens the camp panel
  * 6. Fishpedia toggle (F key) works
- * 7. Full fishing flow: camp → charms → embark → cast
+ * 7. Soul sanctuary panel opens with the shared visual system
+ * 8. Full fishing flow: camp → charms → embark → cast
+ * 9. Idle and waiting scenes stay within the render budget
  *
  * Run: npx playwright test tests/smoke.spec.ts --reporter=list
  * Prerequisites: `npm run build` must have been run first
@@ -20,7 +24,7 @@ import { join } from 'path';
 test.describe('SoulSanctuary Electron Smoke', () => {
   test.setTimeout(60000);
 
-  test('app launches, renders canvas, camp panel, fishpedia, and fishing flow', async () => {
+  test('app launches, renders UI, respects render budget, and completes fishing flow', async () => {
     // ── Launch Electron app ──
     // Use the packaged executable in CI; fall back to the Electron module locally.
     const executablePath = process.env.CI
@@ -31,8 +35,9 @@ test.describe('SoulSanctuary Electron Smoke', () => {
     const env = { ...process.env };
     delete (env as Record<string, string | undefined>).ELECTRON_RUN_AS_NODE;
 
+    const profile = mkdtempSync(join(tmpdir(), 'soul-sanctuary-smoke-'));
     const electronApp = await electron.launch({
-      args: ['.', '--no-sandbox', '--disable-gpu'],
+      args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${profile}`],
       executablePath,
       env,
     });
@@ -50,6 +55,23 @@ test.describe('SoulSanctuary Electron Smoke', () => {
     await expect(canvas).toBeVisible({ timeout: 8000 });
     console.log('[Smoke] ✅ Canvas visible');
 
+    const expectRenderBudget = async (stage: string): Promise<void> => {
+      const stats = await window.evaluate(() => {
+        const probe = (
+          window as unknown as {
+            __soul?: { stats: () => { calls: number; triangles: number } };
+          }
+        ).__soul;
+        return probe?.stats() ?? null;
+      });
+      expect(stats, `${stage} render stats`).not.toBeNull();
+      expect(stats!.calls, `${stage} draw calls`).toBeLessThanOrEqual(140);
+      expect(stats!.triangles, `${stage} triangles`).toBeLessThanOrEqual(150000);
+      console.log(
+        `[Smoke] ✅ ${stage} render budget: ${stats!.calls} calls / ${stats!.triangles} triangles`,
+      );
+    };
+
     // ── 3. Drag bar / orb / close ──
     await expect(window.locator('#drag-bar')).toBeVisible();
     await expect(window.locator('#drag-orb')).toBeVisible();
@@ -60,6 +82,7 @@ test.describe('SoulSanctuary Electron Smoke', () => {
     const startBtn = window.locator('#btn-start');
     await expect(startBtn).toBeVisible({ timeout: 3000 });
     console.log('[Smoke] ✅ START button');
+    await expectRenderBudget('Idle');
 
     await window.screenshot({ path: 'tests/screenshots/01-idle.png' });
 
@@ -99,9 +122,29 @@ test.describe('SoulSanctuary Electron Smoke', () => {
     await window.evaluate(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
-    await window.waitForTimeout(500);
+    await expect(window.locator('#fishpedia')).toBeHidden();
 
-    // ── 9. Full fishing flow ──
+    // ── 9. Soul sanctuary uses the shared panel system ──
+    await window.locator('#scene-toolbar [aria-label]').nth(1).click();
+    const soulPanel = window.locator('#soul-sanctuary-panel');
+    await expect(soulPanel).toBeVisible();
+    expect(
+      await soulPanel.evaluate(
+        (element) => element.ownerDocument.defaultView?.getComputedStyle(element).display,
+      ),
+    ).toBe('flex');
+    expect(await soulPanel.locator('.soul-card[data-collected="false"]').count()).toBeGreaterThan(
+      0,
+    );
+    await expect(soulPanel.locator('.soul-card').first()).toBeVisible();
+    await window.screenshot({ path: 'tests/screenshots/03-soul-sanctuary.png' });
+    await window.evaluate(() => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await expect(soulPanel).toBeHidden();
+    console.log('[Smoke] ✅ Soul sanctuary opened and closed');
+
+    // ── 10. Full fishing flow ──
     // Re-open camp
     await startBtn.click();
     await window.waitForTimeout(800);
@@ -119,10 +162,9 @@ test.describe('SoulSanctuary Electron Smoke', () => {
 
       // Select charms by clicking on cards
       // Charm cards have the CARD_STYLE and contain charm name + description
-      const charmCards = window
-        .locator('div')
-        .filter({ hasText: /Magnetic|Patient|Steady Hands|Keen Eye|Sturdy|Focused/ });
+      const charmCards = window.getByTestId('charm-card');
       const cardCount = await charmCards.count();
+      expect(cardCount).toBe(8);
       console.log(`[Smoke] Found ${cardCount} charm candidates`);
 
       const slotsNeeded = 3;
@@ -139,7 +181,13 @@ test.describe('SoulSanctuary Electron Smoke', () => {
       }
 
       // Click EMBARK
+      await expect(window.locator('[data-testid="charm-card"][data-selected="true"]')).toHaveCount(
+        3,
+      );
       await embarkBtn.first().click();
+      await expect(window.locator('#bait-picker')).toBeVisible();
+      await window.locator('#btn-confirm-bait').click();
+      await expect(window.locator('#run-hud')).toBeVisible();
       await window.waitForTimeout(1000);
       console.log('[Smoke] ✅ Run embarked!');
 
@@ -153,6 +201,7 @@ test.describe('SoulSanctuary Electron Smoke', () => {
 
         await window.mouse.move(cx, cy);
         await window.mouse.down();
+        await expect(window.locator('#cast-bar')).toBeVisible();
         console.log('[Smoke] 🎣 Casting (mouse down)...');
         await window.waitForTimeout(400);
         await window.mouse.up();
@@ -162,11 +211,12 @@ test.describe('SoulSanctuary Electron Smoke', () => {
 
         // Quick wait for potential nibble
         await window.waitForTimeout(2000);
+        await expectRenderBudget('Waiting');
 
         await window.screenshot({ path: 'tests/screenshots/06-waiting.png' });
       }
     } else {
-      console.log('[Smoke] ⚠️ Charm picker did not appear, skipping fishing simulation');
+      throw new Error('Charm picker did not appear; fishing flow could not be verified');
     }
 
     // ── Cleanup ──

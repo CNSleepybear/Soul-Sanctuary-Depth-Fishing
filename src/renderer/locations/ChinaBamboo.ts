@@ -1,571 +1,621 @@
 // ===== src/renderer/locations/ChinaBamboo.ts =====
-// 🇨🇳 China — Bamboo Grove & Firefly Pond with pagoda tower, lotus pond,
-// stone lanterns, fisherman, tabby cat, crescent moon and waterfall rim.
-// Art upgraded to match the richer 翠竹流萤 voxel diorama reference.
+// 🇨🇳 China — Bamboo grove & firefly pond.
+//
+// v2 art pass: hexagonal ting pavilion landmark (right 2/3 line), moon-gate wall,
+// stone bridge over a koi pond, clustered bamboo with ground mist, a firefly
+// pond, foreground reeds/rocks/lantern. Static set merged into instanced
+// batches; atmosphere = fireflies + bamboo mist + falling bamboo leaves.
 
 import * as THREE from 'three';
 import { BaseLocation } from './BaseLocation';
-import { FloatingIsland } from '../rendering/FloatingIsland';
 import { Waterfall } from '../rendering/Waterfall';
-import { TabbyCat } from '../rendering/TabbyCat';
-import { Fisherman } from '../rendering/Fisherman';
-import { MaterialCache } from '../rendering/MaterialCache';
-import { VoxelBuilder } from '../rendering/VoxelBuilder';
 import { LOCATIONS } from '../data/location-data';
 import type { LocationData } from '../../shared/types';
 import {
-  createSurfaceShimmer,
-  updateSurfaceShimmer,
-  createLanternGlow,
-  createRisingPuffs,
-  updateRisingPuffs,
-} from './AtmosphereEffects';
+  buildGlowOrb,
+  buildInstancedVoxels,
+  buildLightShaft,
+  createRng,
+  hashSeed,
+  mixHex,
+  shade,
+  type InstancedVoxel,
+} from '../rendering/ArtKit';
+
+const SURFACE = 1.5;
+const _pos = new THREE.Vector3();
+const _quat = new THREE.Quaternion();
+const _euler = new THREE.Euler();
+const _scale = new THREE.Vector3();
+const _matrix = new THREE.Matrix4();
+const _color = new THREE.Color();
+
+type DriftMode = 'fall' | 'rise' | 'float';
+
+interface DriftConfig {
+  count: number;
+  mode: DriftMode;
+  colors: number[];
+  cx: number;
+  cz: number;
+  areaX: number;
+  areaZ: number;
+  yMin: number;
+  yMax: number;
+  size: [number, number, number];
+  speedMin: number;
+  speedMax: number;
+  sway: number;
+  spin: [number, number, number];
+  opacity: number;
+  additive: boolean;
+}
+
+class DriftField {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly c: DriftConfig;
+  private readonly bx: Float32Array;
+  private readonly bz: Float32Array;
+  private readonly ph: Float32Array;
+  private readonly sp: Float32Array;
+  private readonly off: Float32Array;
+
+  constructor(parent: THREE.Group, cfg: DriftConfig) {
+    this.c = cfg;
+    const rng = createRng(hashSeed(`drift:${cfg.mode}:${cfg.colors[0]}`));
+    this.bx = new Float32Array(cfg.count);
+    this.bz = new Float32Array(cfg.count);
+    this.ph = new Float32Array(cfg.count);
+    this.sp = new Float32Array(cfg.count);
+    this.off = new Float32Array(cfg.count);
+    const material = cfg.additive
+      ? new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: cfg.opacity,
+          depthWrite: false,
+          blending: THREE.AdditiveBlending,
+        })
+      : new THREE.MeshLambertMaterial({
+          color: 0xffffff,
+          flatShading: true,
+          transparent: true,
+          opacity: cfg.opacity,
+          depthWrite: false,
+        });
+    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), material, cfg.count);
+    this.mesh.frustumCulled = false;
+    this.mesh.castShadow = false;
+    this.mesh.receiveShadow = false;
+    for (let i = 0; i < cfg.count; i++) {
+      this.bx[i] = cfg.cx + (rng.next() - 0.5) * cfg.areaX;
+      this.bz[i] = cfg.cz + (rng.next() - 0.5) * cfg.areaZ;
+      this.ph[i] = rng.next() * Math.PI * 2;
+      this.sp[i] = rng.nextFloat(cfg.speedMin, cfg.speedMax);
+      this.off[i] = rng.next();
+      _color.setHex(cfg.colors[rng.nextInt(0, cfg.colors.length - 1)]);
+      this.mesh.setColorAt(i, _color);
+    }
+    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    parent.add(this.mesh);
+    this.update(0);
+  }
+
+  update(time: number): void {
+    const cfg = this.c;
+    const span = cfg.yMax - cfg.yMin;
+    for (let i = 0; i < cfg.count; i++) {
+      const phase = this.ph[i];
+      const speed = this.sp[i];
+      let x = this.bx[i] + Math.sin(time * (0.5 + speed) + phase) * cfg.sway;
+      let z = this.bz[i] + Math.cos(time * (0.4 + speed) + phase) * cfg.sway * 0.7;
+      let y: number;
+      if (cfg.mode === 'fall') {
+        y = cfg.yMax - ((time * speed + this.off[i]) % 1) * span;
+      } else if (cfg.mode === 'rise') {
+        y = cfg.yMin + ((time * speed + this.off[i]) % 1) * span;
+      } else {
+        y = cfg.yMin + this.off[i] * span + Math.sin(time * speed + phase) * cfg.sway * 0.8;
+      }
+      _pos.set(x, y, z);
+      _euler.set(
+        time * cfg.spin[0] + phase,
+        time * cfg.spin[1] + phase,
+        time * cfg.spin[2] + phase,
+      );
+      _quat.setFromEuler(_euler);
+      _scale.set(cfg.size[0], cfg.size[1], cfg.size[2]);
+      _matrix.compose(_pos, _quat, _scale);
+      this.mesh.setMatrixAt(i, _matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+interface FlickerLight {
+  light: THREE.PointLight;
+  base: number;
+  speed: number;
+  phase: number;
+  amp: number;
+}
 
 export class ChinaBamboo extends BaseLocation {
   readonly id = 'china';
-  private _particles: THREE.Object3D[] = [];
-  private _flickerLights: {
-    light: THREE.Light;
-    base: number;
-    speed: number;
-    amp: number;
-    noise?: boolean;
-  }[] = [];
   private _waterfall: Waterfall | null = null;
-  private _waterTiles: THREE.Mesh[] = [];
-  private _koi: THREE.Group[] = [];
-  private _pads: THREE.Mesh[] = [];
-  private _mistPuffs: THREE.Mesh[] = [];
-  private _cat: TabbyCat | null = null;
-  private _fisherman: Fisherman | null = null;
+  private _fields: DriftField[] = [];
+  private _lights: FlickerLight[] = [];
 
   get data(): LocationData {
     return LOCATIONS.find((l) => l.id === 'china')!;
   }
 
   protected buildGeometry(): void {
-    const m = {
-      rock: MaterialCache.getLambert(0x2d3040),
-      stone: MaterialCache.getLambert(0x555a65),
-      moss: MaterialCache.getLambert(0x2a4a32),
-      grass: MaterialCache.getLambert(0x3a6b3a),
-      grassDark: MaterialCache.getLambert(0x2d5540),
-      bamboo: MaterialCache.getLambert(0x4a6e3a),
-      bambooLight: MaterialCache.getLambert(0x4a8a4a),
-      bambooJoint: MaterialCache.getLambert(0x5a8a5a),
-      wood: MaterialCache.getLambert(0x5c4033),
-      woodDark: MaterialCache.getLambert(0x3a2a20),
-      roof: MaterialCache.getLambert(0x4a4038),
-      roofDark: MaterialCache.getLambert(0x3a3028),
-      chinaRed: MaterialCache.getLambert(0xb03030),
-      gold: MaterialCache.getLambert(0xbfa15f),
-      glow: MaterialCache.getBasic(0xffcc66),
-      lanternBody: MaterialCache.getLambert(0x4a4a5a),
-      windowGlow: MaterialCache.getBasic(0xffe2a0),
-      water: MaterialCache.getTransparentLambert(0x1a3a5a, 0.88),
-      waterLight: MaterialCache.getTransparentLambert(0x2a5a8a, 0.78),
-      waterSpark: MaterialCache.getBasic(0x9fdcff),
-      koiOrange: MaterialCache.getBasic(0xe87030),
-      koiWhite: MaterialCache.getBasic(0xf5f0e8),
-      lilyPad: MaterialCache.getLambert(0x2a5a3a),
-      lilyFlower: MaterialCache.getBasic(0xff88aa),
-      moon: MaterialCache.getBasic(0xfff8dd),
-      moonCut: MaterialCache.getBasic(0x0a0a12),
-      firefly: MaterialCache.getBasic(0xd8ff8a),
+    const art = this.art;
+    const theme = this.data.theme;
+    const accent = art.accent ?? 0xd9c28a;
+    const glowColor = art.glow ?? 0xd8ff8a;
+    const keyColor = art.key ?? 0x9fd3c7;
+    const shadowColor = art.shadow ?? 0x2c3a44;
+    const grass = theme?.island.grass ?? 0x6f9a72;
+
+    const p = {
+      bamboo: mixHex(0x7a9a5c, keyColor, 0.12),
+      bambooLight: mixHex(0x94b06a, keyColor, 0.2),
+      bambooDark: shade(0x5c7a46, 0.9),
+      wood: mixHex(0x5a4030, keyColor, 0.1),
+      woodDark: 0x3e2d22,
+      roof: mixHex(0x3a3a40, shadowColor, 0.3),
+      roofDark: 0x2c2c33,
+      gold: accent,
+      stone: mixHex(0x7c8a82, shadowColor, 0.25),
+      stoneLight: mixHex(0xa8b2a6, keyColor, 0.2),
+      stoneDark: mixHex(0x5c6a64, shadowColor, 0.3),
+      water: mixHex(theme?.waterColor ?? 0x385e5b, shadowColor, 0.3),
+      waterLight: mixHex(theme?.waterColor ?? 0x385e5b, keyColor, 0.22),
+      koiOrange: 0xe8703a,
+      koiWhite: 0xf5f0e8,
+      moss: mixHex(grass, 0xd8c88c, 0.24),
+      mossDark: shade(grass, 0.8),
+      glow: glowColor,
+      paper: mixHex(glowColor, 0xffeec0, 0.65),
     };
 
-    // Theme-aware floating island with warmer moss grass
-    const islandTheme = this.data.theme?.island;
-    const island = new FloatingIsland(
-      islandTheme
-        ? { ...islandTheme, grass: 0x3a5a3a }
-        : { stone: 0x6a7a6a, earth: 0x5a4a3a, grass: 0x3a5a3a },
-    );
-    this.group.add(island.group);
-
-    const layer = new VoxelBuilder();
-    layer.group.position.y = 1.5;
-    this.group.add(layer.group);
-
-    // Raw box helper for grouped objects (tower, lanterns, moon)
-    const box = (
+    const body: InstancedVoxel[] = [];
+    const glow: InstancedVoxel[] = [];
+    const ao: InstancedVoxel[] = [];
+    const rng = createRng(hashSeed('china:v2'));
+    const vox = (
+      list: InstancedVoxel[],
+      x: number,
+      z: number,
+      y: number,
       w: number,
       h: number,
       d: number,
-      mat: THREE.Material,
-      x: number,
-      y: number,
-      z: number,
-      parent: THREE.Group,
-      cast = true,
-    ) => {
-      const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-      mesh.position.set(x, y, z);
-      mesh.castShadow = cast;
-      mesh.receiveShadow = true;
-      parent.add(mesh);
-      return mesh;
+      color: number,
+      rotY = 0,
+    ): void => {
+      list.push({ x, y: SURFACE + y + h / 2, z, w, h, d, color, rotY });
+    };
+    const aoPatch = (x: number, z: number, w: number, d: number): void => {
+      ao.push({
+        x,
+        y: SURFACE + 0.015,
+        z,
+        w,
+        h: 0.02,
+        d,
+        color: mixHex(shadowColor, 0x0e1018, 0.4),
+      });
     };
 
-    // ── Waterfall rim ──
-    this._waterfall = new Waterfall({
-      radius: 4.6,
-      innerRadius: 4.0,
-      yBase: -0.2,
-      heightMin: 1.2,
-      heightMax: 2.2,
-      color: 0x66aadd,
-      opacity: 0.65,
-      density: 0.85,
-    });
-    this.group.add(this._waterfall.group);
-
-    // ── Lotus pond with animated tiles ──
-    const waterGroup = new THREE.Group();
-    waterGroup.position.y = 0.05;
-    layer.group.add(waterGroup);
-    for (let x = -4; x <= 4; x += 1) {
-      for (let z = -4; z <= 4; z += 1) {
-        if (Math.sqrt(x * x + z * z) > 4.3) continue;
-        const mat = Math.random() > 0.5 ? m.water : m.waterLight;
-        const w = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.12, 0.95), mat);
-        w.position.set(x, -0.1, z);
-        w.receiveShadow = false;
-        w.castShadow = false;
-        w.userData = { baseY: -0.1, phase: Math.random() * Math.PI * 2 };
-        waterGroup.add(w);
-        this._waterTiles.push(w);
-      }
-    }
-    // Sparkle strips
-    for (let i = 0; i < 8; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 0.8 + Math.random() * 3.2;
-      const sparkle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34 + Math.random() * 0.25, 0.03, 0.08),
-        m.waterSpark,
-      );
-      sparkle.position.set(Math.cos(a) * r, 0.02, Math.sin(a) * r);
-      sparkle.rotation.y = a + Math.PI * 0.5;
-      sparkle.castShadow = false;
-      sparkle.receiveShadow = false;
-      waterGroup.add(sparkle);
-    }
-
-    // ── Lotus pads and flowers ──
-    for (let i = 0; i < 7; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 1 + Math.random() * 3;
-      const px = Math.cos(a) * r;
-      const pz = Math.sin(a) * r;
-      const pad = new THREE.Mesh(
-        new THREE.BoxGeometry(0.8 + Math.random() * 0.4, 0.05, 0.8 + Math.random() * 0.4),
-        m.lilyPad,
-      );
-      pad.position.set(px, -0.05, pz);
-      pad.userData = { baseY: -0.05, phase: Math.random() * Math.PI * 2 };
-      pad.castShadow = false;
-      pad.receiveShadow = false;
-      waterGroup.add(pad);
-      this._pads.push(pad);
-      if (Math.random() > 0.5) {
-        const stem = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.25, 0.06), m.lilyPad);
-        stem.position.set(px, 0.1, pz);
-        stem.castShadow = false;
-        waterGroup.add(stem);
-        const bloom = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.2), m.lilyFlower);
-        bloom.position.set(px, 0.22, pz);
-        bloom.castShadow = false;
-        waterGroup.add(bloom);
-      }
-    }
-
-    // ── Koi fish ──
-    const koiConfigs = [
-      { x: -0.8, z: 1.6, c: m.koiOrange },
-      { x: 0.6, z: 2.0, c: m.koiWhite },
-      { x: 0.2, z: 1.4, c: m.koiOrange },
-      { x: -0.4, z: 2.2, c: m.koiWhite },
-    ];
-    koiConfigs.forEach((k) => {
-      const koi = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.12), k.c);
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.02), k.c);
-      tail.position.set(-0.25, 0, 0);
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.02), k.c);
-      fin.position.set(0.22, 0.02, 0);
-      koi.add(body, tail, fin);
-      koi.position.set(k.x, -0.05, k.z);
-      koi.userData = { type: 'koi', baseX: k.x, baseZ: k.z, phase: Math.random() * Math.PI * 2 };
-      waterGroup.add(koi);
-      this._koi.push(koi);
-      this._particles.push(koi);
-    });
-
-    // ── Bamboo forest ──
-    const bambooGroup = new THREE.Group();
-    const createBamboo = (x: number, z: number, height: number, tilt: number) => {
-      const b = new THREE.Group();
-      const segments = Math.floor(height / 0.8);
-      for (let i = 0; i < segments; i++) {
-        const mat = i % 2 === 0 ? m.bamboo : m.bambooLight;
-        const seg = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.7, 0.35), mat);
-        seg.position.set(0, i * 0.8 + 0.35, 0);
-        seg.castShadow = true;
-        b.add(seg);
-        // Joint
-        const joint = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 0.4), m.bambooJoint);
-        joint.position.set(0, i * 0.8 + 0.05, 0);
-        joint.castShadow = false;
-        b.add(joint);
-      }
-      // Leaf clusters
-      for (let i = 0; i < 5; i++) {
-        const ly = height - 0.5 - Math.random() * 1.5;
-        const lx = (Math.random() - 0.5) * 1.2;
-        const lz = (Math.random() - 0.5) * 1.2;
-        const leafA = new THREE.Mesh(
-          new THREE.BoxGeometry(0.6 + Math.random() * 0.4, 0.08, 0.15),
-          m.bambooLight,
-        );
-        leafA.position.set(lx, ly, lz);
-        leafA.rotation.y = Math.random() * Math.PI;
-        leafA.castShadow = false;
-        const leafB = new THREE.Mesh(
-          new THREE.BoxGeometry(0.15, 0.08, 0.6 + Math.random() * 0.4),
-          m.bambooLight,
-        );
-        leafB.position.set(lx, ly + 0.1, lz);
-        leafB.rotation.y = Math.random() * Math.PI;
-        leafB.castShadow = false;
-        b.add(leafA, leafB);
-      }
-      b.position.set(x, 0.05, z);
-      b.rotation.z = tilt * 0.05;
-      b.rotation.x = tilt * 0.03;
-      bambooGroup.add(b);
-    };
-    // Outer bamboo ring (kept inside solid inner 70% of island, radius < 5.5)
-    for (let i = 0; i < 18; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 3.2 + Math.random() * 1.8;
-      createBamboo(Math.cos(a) * r, Math.sin(a) * r, 5 + Math.random() * 4, Math.random() - 0.5);
-    }
-    // Inner accents
-    createBamboo(-3.2, -2.2, 5, 0.2);
-    createBamboo(3, -1.5, 6, -0.1);
-    createBamboo(-2.8, 3.2, 4.5, 0.3);
-    layer.group.add(bambooGroup);
-
-    // ── Hexagonal pavilion in bamboo clearing ──
-    const pavilion = new THREE.Group();
+    // ── Landmark: hexagonal ting pavilion (right 2/3 line) ──
+    const px = 2.6;
+    const pz = -3.0;
+    vox(body, px, pz, 0, 3.1, 0.24, 3.1, p.stone);
+    vox(body, px, pz, 0.24, 2.6, 0.2, 2.6, p.stoneLight);
     for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      box(0.12, 1.6, 0.12, m.woodDark, Math.cos(a) * 0.9, 0.8, Math.sin(a) * 0.9, pavilion);
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+      const cx = px + Math.cos(a) * 1.35;
+      const cz = pz + Math.sin(a) * 1.35;
+      vox(body, cx, cz, 0.44, 0.16, 2.1, 0.16, p.woodDark, a);
+      vox(body, cx, cz, 0.44, 0.34, 0.14, 0.34, p.stoneDark, a);
+      // railing between columns
+      if (i % 2 === 0) {
+        vox(
+          body,
+          px + Math.cos(a) * 1.1,
+          pz + Math.sin(a) * 1.1,
+          0.9,
+          0.7,
+          0.08,
+          0.1,
+          p.wood,
+          a + Math.PI / 2,
+        );
+      }
     }
-    box(2.2, 0.1, 2.2, m.roof, 0, 1.7, 0, pavilion);
-    box(1.6, 0.1, 1.6, m.roofDark, 0, 1.85, 0, pavilion);
-    box(1.0, 0.1, 1.0, m.roof, 0, 1.98, 0, pavilion);
-    box(0.08, 0.4, 0.08, m.gold, 0, 2.25, 0, pavilion, false);
-    // Pavilion benches
-    box(1.4, 0.12, 0.4, m.wood, 0, 0.4, 0, pavilion);
-    box(0.4, 0.12, 1.4, m.wood, 0, 0.4, 0, pavilion);
-    pavilion.position.set(-2.5, 0, 2.5);
-    layer.group.add(pavilion);
+    // glowing lattice screens
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + Math.PI / 6 + Math.PI / 6;
+      const cx = px + Math.cos(a) * 1.16;
+      const cz = pz + Math.sin(a) * 1.16;
+      vox(glow, cx, cz, 0.95, 0.85, 1.2, 0.06, i % 2 ? p.paper : mixHex(p.paper, p.gold, 0.4), a);
+    }
+    // three tiered eaves + gold finial
+    vox(body, px, pz, 2.5, 3.1, 0.2, 3.1, p.roof, 0.26);
+    vox(body, px, pz, 2.7, 2.6, 0.18, 2.6, p.roofDark, 0.26);
+    vox(body, px, pz, 3.0, 2.2, 0.18, 2.2, p.roof, 0.42);
+    vox(body, px, pz, 3.18, 1.7, 0.16, 1.7, p.roofDark, 0.42);
+    vox(body, px, pz, 3.42, 1.15, 0.16, 1.15, p.roof, 0.55);
+    vox(body, px, pz, 3.58, 0.6, 0.2, 0.6, p.roofDark, 0.55);
+    vox(body, px, pz, 3.78, 0.22, 0.42, 0.22, p.gold);
+    vox(glow, px, pz, 3.9, 0.14, 0.14, 0.14, p.gold);
+    aoPatch(px, pz, 3.4, 3.4);
 
-    // ── Chinese pagoda tower ──
-    const tower = new THREE.Group();
-    // Base platform
-    box(4, 0.5, 4, m.stone, 0, 0.25, 0, tower);
-    // First floor
-    box(3, 2.5, 3, m.woodDark, 0, 1.75, 0, tower);
-    // First eaves
-    box(4, 0.3, 4, m.roof, 0, 3.15, 0, tower);
-    box(3.5, 0.2, 3.5, m.roofDark, 0, 3.4, 0, tower);
-    // First floor windows
-    box(0.5, 0.8, 0.1, m.windowGlow, -0.8, 2, 1.51, tower, false);
-    box(0.5, 0.8, 0.1, m.windowGlow, 0.8, 2, 1.51, tower, false);
-    box(0.1, 0.8, 0.5, m.windowGlow, 1.51, 2, -0.8, tower, false);
-    box(0.1, 0.8, 0.5, m.windowGlow, 1.51, 2, 0.8, tower, false);
-    // Second floor
-    box(2.2, 2, 2.2, m.wood, 0, 4.4, 0, tower);
-    box(3.2, 0.25, 3.2, m.roof, 0, 5.5, 0, tower);
-    box(2.8, 0.2, 2.8, m.roofDark, 0, 5.72, 0, tower);
-    box(0.4, 0.6, 0.1, m.windowGlow, 0, 4.5, 1.11, tower, false);
-    // Third floor
-    box(1.5, 1.5, 1.5, m.woodDark, 0, 6.5, 0, tower);
-    box(2.2, 0.2, 2.2, m.roof, 0, 7.35, 0, tower);
-    box(1.8, 0.15, 1.8, m.roofDark, 0, 7.55, 0, tower);
-    // Spire
-    box(0.3, 1.2, 0.3, m.wood, 0, 8.2, 0, tower);
-    box(0.6, 0.1, 0.6, m.roof, 0, 8.8, 0, tower);
-    tower.position.set(3, 0.4, -3);
-    layer.group.add(tower);
+    // ── Moon gate in a low courtyard wall ──
+    const mx = -3.7;
+    const mz = -1.0;
+    for (let gx = -1.5; gx <= 1.5; gx += 0.25) {
+      for (let gy = 0; gy <= 2.4; gy += 0.25) {
+        if (gx * gx + gy * gy < 0.72) continue;
+        vox(
+          body,
+          mx + gx,
+          mz,
+          gy,
+          0.26,
+          0.26,
+          0.34,
+          (Math.round(gx * 4) + Math.round(gy * 4)) % 2 ? p.stoneLight : p.stone,
+        );
+      }
+    }
+    vox(body, mx, mz, 2.62, 3.3, 0.18, 0.5, p.roofDark);
+    vox(body, mx, mz, 2.8, 3.7, 0.14, 0.62, p.roof);
+    aoPatch(mx, mz, 3.6, 0.8);
+
+    // ── Koi pond + stone bridge ──
+    const kx = -0.9;
+    const kz = 1.3;
+    for (let gx = -2.9; gx <= 1.1; gx += 0.5) {
+      for (let gz = -0.3; gz <= 2.9; gz += 0.5) {
+        const dx = (gx - kx) / 1.95;
+        const dz = (gz - kz) / 1.5;
+        if (dx * dx + dz * dz > 0.94) continue;
+        vox(glow, gx, gz, 0.02, 0.5, 0.06, 0.5, rng.chance(0.45) ? p.waterLight : p.water);
+      }
+    }
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 2;
+      vox(
+        body,
+        kx + Math.cos(a) * 2.12,
+        kz + Math.sin(a) * 1.66,
+        0,
+        rng.nextFloat(0.4, 0.6),
+        rng.nextFloat(0.18, 0.3),
+        rng.nextFloat(0.38, 0.54),
+        rng.chance(0.3) ? p.mossDark : p.stone,
+        rng.nextFloat(-0.3, 0.3),
+      );
+    }
+    const bridgeA = kx - 1.9;
+    const bridgeB = kx + 1.9;
+    const bridgeSegs = 8;
+    for (let i = 0; i <= bridgeSegs; i++) {
+      const t = i / bridgeSegs;
+      const bx = bridgeA + (bridgeB - bridgeA) * t;
+      const by = 0.16 + Math.sin(t * Math.PI) * 0.32;
+      vox(body, bx, kz, by, 0.52, 0.12, 0.95, i % 2 ? p.stone : p.stoneLight);
+      if (i > 0 && i < bridgeSegs) {
+        vox(body, bx, kz + 0.42, by + 0.12, 0.08, 0.42, 0.08, p.stoneDark);
+        vox(body, bx, kz - 0.42, by + 0.12, 0.08, 0.42, 0.08, p.stoneDark);
+        vox(body, bx, kz + 0.42, by + 0.54, 0.5, 0.07, 0.08, p.stoneDark);
+        vox(body, bx, kz - 0.42, by + 0.54, 0.5, 0.07, 0.08, p.stoneDark);
+      }
+    }
+    // Static koi silhouettes under the surface.
+    [
+      [-1.5, 1.0, p.koiOrange],
+      [-0.2, 1.8, p.koiWhite],
+      [0.3, 0.8, p.koiOrange],
+    ].forEach(([fx, fz, color]) => {
+      vox(glow, fx, fz, 0.06, 0.34, 0.06, 0.14, color, rng.nextFloat(0, Math.PI));
+    });
+    aoPatch(kx, kz, 4.8, 3.6);
+
+    // ── Bamboo grove: clustered stalks with node joints and leaf fans ──
+    const bamboo = (bx: number, bz: number, s: number): void => {
+      const stalks = 3 + rng.nextInt(0, 2);
+      for (let st = 0; st < stalks; st++) {
+        const a = rng.nextFloat(0, Math.PI * 2);
+        const r = rng.nextFloat(0.05, 0.4);
+        const sx = bx + Math.cos(a) * r;
+        const sz = bz + Math.sin(a) * r;
+        const h = rng.nextFloat(2.3, 3.5) * s;
+        const segs = Math.max(3, Math.round(h / 0.62));
+        for (let i = 0; i < segs; i++) {
+          const sh = h / segs;
+          vox(body, sx, sz, i * sh, 0.16, sh * 0.9, 0.16, i % 2 ? p.bamboo : p.bambooLight);
+          vox(body, sx, sz, i * sh, 0.2, 0.05, 0.2, p.bambooDark);
+        }
+        for (let i = 0; i < 4; i++) {
+          const la = rng.nextFloat(0, Math.PI * 2);
+          vox(
+            body,
+            sx + Math.cos(la) * rng.nextFloat(0.15, 0.5),
+            sz + Math.sin(la) * rng.nextFloat(0.15, 0.5),
+            h - rng.nextFloat(0.1, 0.6),
+            rng.nextFloat(0.3, 0.6),
+            0.07,
+            rng.nextFloat(0.3, 0.6),
+            i % 2 ? p.bambooLight : p.bamboo,
+            la,
+          );
+        }
+      }
+      aoPatch(bx, bz, 1.6 * s, 1.6 * s);
+    };
+    bamboo(-4.3, -3.1, 1.1);
+    bamboo(-1.8, -4.4, 1);
+    bamboo(4.15, -1.6, 0.95);
+    bamboo(-4.35, 1.6, 0.9);
+    bamboo(3.9, 0.6, 0.75);
 
     // ── Stone lanterns ──
-    const makeStoneLantern = (lx: number, lz: number) => {
-      const sl = new THREE.Group();
-      box(0.6, 0.3, 0.6, m.stone, 0, 0.15, 0, sl);
-      box(0.4, 1, 0.4, m.lanternBody, 0, 0.8, 0, sl);
-      box(0.6, 0.15, 0.6, m.stone, 0, 1.4, 0, sl);
-      box(0.35, 0.5, 0.35, m.glow, 0, 1.75, 0, sl, false);
-      box(0.7, 0.2, 0.7, m.stone, 0, 2.1, 0, sl);
-      box(0.2, 0.3, 0.2, m.stone, 0, 2.35, 0, sl);
-      sl.position.set(lx, 0, lz);
-      return sl;
+    const lantern = (lx: number, lz: number, s: number): void => {
+      vox(body, lx, lz, 0, 0.6 * s, 0.18 * s, 0.6 * s, p.stoneDark);
+      vox(body, lx, lz, 0.18 * s, 0.26 * s, 0.8 * s, 0.26 * s, p.stone);
+      vox(body, lx, lz, 0.98 * s, 0.56 * s, 0.13 * s, 0.56 * s, p.stoneLight);
+      vox(glow, lx, lz, 1.11 * s, 0.32 * s, 0.34 * s, 0.32 * s, p.paper);
+      vox(body, lx, lz, 1.45 * s, 0.72 * s, 0.15 * s, 0.72 * s, p.stone);
+      vox(body, lx, lz, 1.6 * s, 0.4 * s, 0.12 * s, 0.4 * s, p.stoneLight);
+      vox(body, lx, lz, 1.72 * s, 0.14 * s, 0.16 * s, 0.14 * s, p.stone);
+      aoPatch(lx, lz, 1.0 * s, 1.0 * s);
     };
-    layer.group.add(makeStoneLantern(-3.5, 1));
-    layer.group.add(makeStoneLantern(1.5, 3.5));
-    layer.group.add(makeStoneLantern(-1, -3.5));
+    lantern(-3.6, 0.9, 1);
+    lantern(1.4, 3.6, 1);
+    lantern(4.85, 1.55, 1.05);
 
-    // ── Fisherman ──
-    this._fisherman = new Fisherman();
-    this._fisherman.group.position.set(-0.5, 0.4, 1.5);
-    this._fisherman.group.rotation.y = -0.3;
-    layer.group.add(this._fisherman.group);
-
-    // ── Tabby cat ──
-    this._cat = new TabbyCat();
-    this._cat.setPosition(-1.3, 0.4, 0.8);
-    this._cat.setRotationY(0.5);
-    layer.group.add(this._cat.group);
-
-    // ── Crescent moon ──
-    const moon = new THREE.Group();
-    box(0.6, 0.8, 0.15, m.moon, 0, 0, 0, moon, false);
-    box(0.5, 0.6, 0.15, m.moon, 0.1, 0.1, 0, moon, false);
-    box(0.4, 0.4, 0.15, m.moon, 0.2, 0.2, 0, moon, false);
-    // Crescent cut
-    box(0.35, 0.5, 0.16, m.moonCut, 0.25, 0.15, 0, moon, false);
-    moon.position.set(-8, 16, -12);
-    layer.group.add(moon);
-
-    // ── Scatter decorations ──
-    // Small stones
-    for (let i = 0; i < 10; i++) {
-      const s = 0.2 + Math.random() * 0.3;
-      const a = Math.random() * Math.PI * 2;
-      const r = 2 + Math.random() * 4;
-      layer.boxMat(s, s * 0.5, s, m.stone, Math.cos(a) * r, 0.4, Math.sin(a) * r);
+    // ── Foreground frame: reeds, rocks, bench at the right edge ──
+    for (let i = 0; i < 14; i++) {
+      const a = rng.nextFloat(0, Math.PI * 2);
+      const r = rng.nextFloat(0.2, 1.1);
+      const h = rng.nextFloat(0.5, 1.4);
+      vox(
+        body,
+        4.5 + Math.cos(a) * r,
+        2.35 + Math.sin(a) * r,
+        0,
+        0.07,
+        h,
+        0.07,
+        i % 3 === 0 ? p.mossDark : p.moss,
+        rng.nextFloat(-0.35, 0.35),
+      );
+      if (i % 4 === 0)
+        vox(body, 4.5 + Math.cos(a) * r, 2.35 + Math.sin(a) * r, h, 0.12, 0.18, 0.12, p.gold);
     }
-    // Grass tufts
-    for (let i = 0; i < 15; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = 1.5 + Math.random() * 4.5;
-      const mat = Math.random() > 0.3 ? m.grass : m.grassDark;
-      layer.boxMat(
-        0.06,
-        0.25 + Math.random() * 0.2,
-        0.06,
-        mat,
-        Math.cos(a) * r,
-        0.5,
-        Math.sin(a) * r,
-        { castShadow: false },
+    for (let i = 0; i < 4; i++) {
+      const s = rng.nextFloat(0.4, 0.75);
+      vox(
+        body,
+        4.9 + rng.nextFloat(-0.4, 0.4),
+        1.0 + rng.nextFloat(-0.3, 0.3),
+        0,
+        s,
+        s * 0.7,
+        s * 0.9,
+        i % 2 ? p.stone : p.stoneDark,
+        rng.nextFloat(-0.4, 0.4),
+      );
+    }
+    vox(body, 4.0, 2.9, 0.32, 1.1, 0.1, 0.36, p.wood);
+    vox(body, 3.7, 2.9, 0, 0.1, 0.32, 0.1, p.woodDark);
+    vox(body, 4.3, 2.9, 0, 0.1, 0.32, 0.1, p.woodDark);
+    aoPatch(4.4, 2.2, 2.4, 2.0);
+
+    // ── Shore scatter ──
+    for (let i = 0; i < 52; i++) {
+      const a = rng.nextFloat(0, Math.PI * 2);
+      const r = rng.nextFloat(2.4, 5.6);
+      const x = Math.cos(a) * r;
+      const z = Math.sin(a) * r;
+      if (Math.hypot(x + 2.8, z - 3.9) < 2.2) continue;
+      const kind = rng.next();
+      if (kind < 0.55) {
+        const h = rng.nextFloat(0.2, 0.46);
+        vox(
+          body,
+          x,
+          z,
+          0,
+          0.06,
+          h,
+          0.06,
+          rng.chance(0.35) ? p.mossDark : p.moss,
+          rng.nextFloat(-0.4, 0.4),
+        );
+      } else if (kind < 0.85) {
+        const s = rng.nextFloat(0.12, 0.28);
+        vox(
+          body,
+          x,
+          z,
+          0,
+          s,
+          s * 0.6,
+          s * 0.8,
+          rng.chance(0.5) ? p.stone : p.stoneDark,
+          rng.nextFloat(0, Math.PI),
+        );
+      } else {
+        vox(glow, x, z, 0.03, 0.12, 0.04, 0.12, p.glow);
+      }
+    }
+    // Lily pads.
+    for (let i = 0; i < 5; i++) {
+      const a = rng.nextFloat(0, Math.PI * 2);
+      vox(
+        body,
+        kx + Math.cos(a) * rng.nextFloat(0.3, 1.4),
+        kz + Math.sin(a) * rng.nextFloat(0.2, 1.0),
+        0.05,
+        rng.nextFloat(0.28, 0.46),
+        0.04,
+        rng.nextFloat(0.24, 0.38),
+        p.mossDark,
       );
     }
 
-    // ── Lighting ──
-    // Cool moonlight from the crescent
-    const moonDir = new THREE.DirectionalLight(0x99aadd, 1.0);
-    moonDir.position.set(-8, 20, -10);
-    moonDir.castShadow = true;
-    moonDir.shadow.mapSize.width = 512;
-    moonDir.shadow.mapSize.height = 512;
-    this.scene.add(moonDir);
+    this.group.add(buildInstancedVoxels(body, { castShadow: true, receiveShadow: true }));
+    this.group.add(
+      buildInstancedVoxels(glow, { castShadow: false, receiveShadow: false, shading: 'basic' }),
+    );
+    this.group.add(
+      buildInstancedVoxels(ao, { castShadow: false, receiveShadow: false, shading: 'basic' }),
+    );
 
-    // Fill light
-    const fillLight = new THREE.DirectionalLight(0x4466aa, 0.5);
-    fillLight.position.set(10, 10, 5);
-    this.scene.add(fillLight);
-
-    // Rim light
-    const rimLight = new THREE.DirectionalLight(0x6644aa, 0.5);
-    rimLight.position.set(-10, 5, -10);
-    this.scene.add(rimLight);
-
-    // Tower warm light
-    const towerLight = new THREE.PointLight(0xffc070, 4, 15);
-    towerLight.position.set(3, 5, -3);
-    towerLight.castShadow = true;
-    towerLight.shadow.mapSize.width = 128;
-    layer.group.add(towerLight);
-    this._flickerLights.push({ light: towerLight, base: 3.4, speed: 5, amp: 0.25, noise: true });
-
-    // Water glow
-    const waterGlow = new THREE.PointLight(0x66c8ff, 2.0, 10);
-    waterGlow.position.set(0, -1, 0);
-    layer.group.add(waterGlow);
+    // ── Rim waterfall (v2) ──
+    this._waterfall = new Waterfall({
+      radius: 6.6,
+      innerRadius: 6.18,
+      yBase: -0.15,
+      heightMin: 2.2,
+      heightMax: 3.0,
+      color: mixHex(theme?.waterColor ?? 0x385e5b, keyColor, 0.4),
+      opacity: 0.55,
+      density: 0.72,
+    });
+    this.group.add(this._waterfall.group);
 
     this.scene.add(this.group);
   }
 
   protected buildAtmosphere(): void {
-    const layer = this.group.children[1] as THREE.Group;
-    // Pond shimmer
-    const shimmer = createSurfaceShimmer(layer, 14, 0x88ffcc, { x: 3.6, z: 3.2, y: 0.18 });
-    for (const s of shimmer) {
-      s.position.x += (Math.random() - 0.5) * 3.6;
-      s.position.z += 1.5 + (Math.random() - 0.5) * 2.6;
-    }
-    this._particles.push(...shimmer);
+    const art = this.art;
+    const glowColor = art.glow ?? 0xd8ff8a;
+    const keyColor = art.key ?? 0x9fd3c7;
 
-    // Lantern glows
-    const lanternGlow1 = createLanternGlow(
-      layer,
-      new THREE.Vector3(-3.5, 2.2, 1),
-      0xffaa33,
-      1.2,
-      5,
+    this._fields.push(
+      new DriftField(this.group, {
+        count: 30,
+        mode: 'float',
+        colors: [glowColor, 0xf2ffb0, 0xb6ff9a],
+        cx: -0.9,
+        cz: 1.0,
+        areaX: 9,
+        areaZ: 9,
+        yMin: 1.6,
+        yMax: 4.4,
+        size: [0.08, 0.08, 0.08],
+        speedMin: 0.25,
+        speedMax: 0.6,
+        sway: 0.75,
+        spin: [0, 0.7, 0],
+        opacity: 0.9,
+        additive: true,
+      }),
     );
-    this._flickerLights.push({
-      light: lanternGlow1.light,
-      base: 1.0,
-      speed: 6,
-      amp: 0.15,
-      noise: true,
-    });
-    const lanternGlow2 = createLanternGlow(
-      layer,
-      new THREE.Vector3(1.5, 2.2, 3.5),
-      0xffaa33,
-      1.2,
-      5,
+    this._fields.push(
+      new DriftField(this.group, {
+        count: 20,
+        mode: 'float',
+        colors: [0x9fb8ac, 0xc4d4c8],
+        cx: 0,
+        cz: -1.5,
+        areaX: 11,
+        areaZ: 9,
+        yMin: 0.6,
+        yMax: 2.4,
+        size: [1.6, 0.1, 1.0],
+        speedMin: 0.04,
+        speedMax: 0.1,
+        sway: 0.4,
+        spin: [0, 0.02, 0],
+        opacity: 0.16,
+        additive: false,
+      }),
     );
-    this._flickerLights.push({
-      light: lanternGlow2.light,
-      base: 1.0,
-      speed: 5.5,
-      amp: 0.15,
-      noise: true,
-    });
-    const lanternGlow3 = createLanternGlow(
-      layer,
-      new THREE.Vector3(-1, 2.2, -3.5),
-      0xffaa33,
-      1.2,
-      5,
+    this._fields.push(
+      new DriftField(this.group, {
+        count: 26,
+        mode: 'fall',
+        colors: [0x94b06a, 0x7a9a5c],
+        cx: 0,
+        cz: 0,
+        areaX: 11,
+        areaZ: 11,
+        yMin: 0.3,
+        yMax: 6.4,
+        size: [0.18, 0.02, 0.1],
+        speedMin: 0.06,
+        speedMax: 0.14,
+        sway: 0.5,
+        spin: [1.2, 0.8, 1.6],
+        opacity: 0.9,
+        additive: false,
+      }),
     );
-    this._flickerLights.push({
-      light: lanternGlow3.light,
-      base: 1.0,
-      speed: 6.5,
-      amp: 0.15,
-      noise: true,
-    });
 
-    // Ground mist layers (3-4 depth planes)
-    this._mistPuffs = createRisingPuffs(
-      layer,
-      10,
-      0x88aabb,
-      { x: 10, z: 10, yMin: 0.2, yMax: 1.0 },
-      0.35,
-    );
-    for (const p of this._mistPuffs) {
-      p.position.y = 0.2 + Math.random() * 0.6;
-    }
-    this._particles.push(...this._mistPuffs);
-
-    // Fireflies
-    const fireflyGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
-    const fireflyMat = new THREE.MeshBasicMaterial({
-      color: 0xd8ff8a,
-      transparent: true,
-      opacity: 0.8,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
+    const shafts = buildLightShaft({
+      color: keyColor,
+      height: 7,
+      width: 2.2,
+      opacity: 0.05,
+      count: 2,
+      seed: hashSeed('china:shaft'),
     });
-    for (let i = 0; i < 35; i++) {
-      const p = new THREE.Mesh(fireflyGeo, fireflyMat.clone());
-      p.position.set(
-        (Math.random() - 0.5) * 15,
-        1.2 + Math.random() * 5.8,
-        (Math.random() - 0.5) * 15,
-      );
-      p.userData = {
-        type: 'firefly',
-        baseX: p.position.x,
-        baseY: p.position.y,
-        baseZ: p.position.z,
-        speed: 0.3 + Math.random() * 0.5,
-        radius: 0.35 + Math.random() * 1.6,
-        phase: Math.random() * Math.PI * 2,
-      };
-      layer.add(p);
-      this._particles.push(p);
-    }
+    shafts.position.set(0, SURFACE + 0.4, 0);
+    this.group.add(shafts);
+
+    this.group.add(
+      buildGlowOrb({
+        color: glowColor,
+        size: 0.36,
+        position: new THREE.Vector3(2.6, SURFACE + 2.1, -2.7),
+      }),
+    );
+
+    const addLight = (
+      color: number,
+      x: number,
+      y: number,
+      z: number,
+      base: number,
+      distance: number,
+      speed: number,
+      amp: number,
+    ): void => {
+      const light = new THREE.PointLight(color, base, distance);
+      light.position.set(x, y, z);
+      this.group.add(light);
+      this._lights.push({ light, base, speed, phase: this._lights.length * 1.9, amp });
+    };
+    addLight(0xffcf7a, 2.6, SURFACE + 2.0, -2.6, 1.7, 6.5, 1.5, 0.16);
+    addLight(glowColor, 0.2, SURFACE + 2.2, 1.2, 1.1, 6.0, 0.9, 0.2);
+    addLight(0x7fd8e8, -0.9, SURFACE + 0.7, 1.3, 1.0, 5.0, 0.7, 0.1);
   }
 
   protected updateAtmosphere(_dt: number, time: number): void {
-    // Waterfall
     this._waterfall?.update(time);
-
-    // Water tiles
-    for (const w of this._waterTiles) {
-      w.position.y = w.userData.baseY + Math.sin(time * 2 + w.userData.phase) * 0.03;
-    }
-
-    updateRisingPuffs(time, this._mistPuffs);
-
-    // Lotus pads
-    for (const p of this._pads) {
-      p.position.y = p.userData.baseY + Math.sin(time * 1.5 + p.userData.phase) * 0.02;
-      p.rotation.y = Math.sin(time * 0.5 + p.userData.phase) * 0.1;
-    }
-
-    // Cat
-    this._cat?.update(time);
-
-    // Fisherman
-    this._fisherman?.update(time);
-
-    // Particles
-    for (const p of this._particles) {
-      const ud = p.userData;
-      if (!ud) continue;
-      if (ud.type === 'shimmer') {
-        updateSurfaceShimmer(time, [p as THREE.Mesh]);
-      } else if (ud.type === 'firefly') {
-        p.position.x = ud.baseX + Math.sin(time * ud.speed + ud.phase) * ud.radius;
-        p.position.y = ud.baseY + Math.sin(time * ud.speed * 0.7 + ud.phase) * 0.3;
-        p.position.z = ud.baseZ + Math.cos(time * ud.speed * 0.5 + ud.phase) * ud.radius;
-        p.visible = Math.sin(time * 3 + ud.phase) > -0.3;
-      }
+    for (const field of this._fields) field.update(time);
+    for (const entry of this._lights) {
+      entry.light.intensity = entry.base + Math.sin(time * entry.speed + entry.phase) * entry.amp;
     }
   }
 
-  update(_dt: number, time: number): void {
-    for (const p of this._particles) {
-      const ud = p.userData;
-      if (!ud) continue;
-      if (ud.type === 'koi') {
-        p.position.x = ud.baseX + Math.sin(time * 0.5 + ud.phase) * 0.25;
-        p.position.z = ud.baseZ + Math.cos(time * 0.3 + ud.phase) * 0.15;
-        (p as THREE.Group).rotation.y = Math.atan2(
-          Math.cos(time * 0.5 + ud.phase) * 0.25,
-          -Math.sin(time * 0.5 + ud.phase) * 0.15,
-        );
-      }
-    }
-    for (const fl of this._flickerLights) {
-      let intensity = fl.base + Math.sin(time * fl.speed) * fl.amp;
-      if (fl.noise) intensity += Math.cos(time * fl.speed * 1.5) * (fl.amp * 0.5);
-      fl.light.intensity = intensity;
-    }
+  update(dt: number, time: number): void {
+    super.update(dt, time);
   }
 
   destroy(): void {
     this._waterfall?.dispose();
     this._waterfall = null;
-    this._cat = null;
-    this._fisherman = null;
-    this._waterTiles = [];
-    this._koi = [];
-    this._pads = [];
-    this._mistPuffs = [];
-    this._particles = [];
-    this._flickerLights = [];
+    this._fields = [];
+    this._lights = [];
     super.destroy();
   }
 }
