@@ -460,9 +460,9 @@ export class DenmarkNyhavn extends BaseLocation {
     this.waterfall = new Waterfall({
       radius: islandRadius + 0.25,
       innerRadius: islandRadius - 0.2,
-      yBase: -0.2,
-      heightMin: 2.2,
-      heightMax: 3.2,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(key, 0xcfe0ea, 0.45),
       opacity: 0.5,
       density: 0.7,

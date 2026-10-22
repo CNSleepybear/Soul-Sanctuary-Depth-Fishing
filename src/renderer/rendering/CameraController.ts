@@ -25,30 +25,15 @@ export class CameraController {
     this.height = camera.position.y;
     this.angle = Math.atan2(dz, dx);
 
-    // ── Inject breathing animation CSS ──
-    const styleId = 'camera-rotate-style';
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.textContent = `
-        @keyframes breathe-cyan {
-          0%, 100% { box-shadow: 0 0 4px 1px rgba(100,200,255,0.25); }
-          50%      { box-shadow: 0 0 10px 3px rgba(100,200,255,0.50); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    // ── Build dots matching drag-bar orb style ──
+    // Quiet brass controls share the journal palette.
     const dotStyle = `
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      background: rgba(100,200,255,0.40);
-      border: none; cursor: pointer;
+      width: 18px; height: 18px;
+      border-radius: 4px;
+      background: rgba(31,39,36,0.88);
+      border: 1px solid rgba(224,185,120,0.3); cursor: pointer;
       flex-shrink: 0;
       -webkit-app-region: no-drag;
       transition: transform 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-      animation: breathe-cyan 3.5s ease-in-out infinite;
     `;
 
     this.btnLeft = this._makeDot('◀', dotStyle, 'Rotate left');
@@ -71,25 +56,34 @@ export class CameraController {
     const dot = document.createElement('div');
     dot.style.cssText = baseStyle;
     dot.title = title;
+    dot.setAttribute('role', 'button');
+    dot.setAttribute('aria-label', title);
+    dot.tabIndex = 0;
+    dot.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        this.rotate(symbol === '◀' ? 0.15 : -0.15);
+      }
+    });
     // Tiny arrow overlay via text
     dot.style.display = 'flex';
     dot.style.alignItems = 'center';
     dot.style.justifyContent = 'center';
-    dot.style.color = 'rgba(255,255,255,0.65)';
+    dot.style.color = '#e0b978';
     dot.style.fontSize = '7px';
     dot.style.fontWeight = 'bold';
     dot.style.lineHeight = '1';
     dot.textContent = symbol;
 
     dot.addEventListener('mouseenter', () => {
-      dot.style.background = 'rgba(100,200,255,0.80)';
-      dot.style.color = 'rgba(255,255,255,1)';
-      dot.style.boxShadow = '0 0 14px 4px rgba(100,200,255,0.7)';
-      dot.style.transform = 'scale(1.3)';
+      dot.style.background = 'rgba(70,77,63,0.95)';
+      dot.style.color = '#efe7d6';
+      dot.style.boxShadow = '0 0 8px rgba(224,185,120,0.15)';
+      dot.style.transform = 'translateY(-1px)';
     });
     dot.addEventListener('mouseleave', () => {
-      dot.style.background = 'rgba(100,200,255,0.40)';
-      dot.style.color = 'rgba(255,255,255,0.65)';
+      dot.style.background = 'rgba(31,39,36,0.88)';
+      dot.style.color = '#e0b978';
       dot.style.boxShadow = '';
       dot.style.transform = 'scale(1)';
     });

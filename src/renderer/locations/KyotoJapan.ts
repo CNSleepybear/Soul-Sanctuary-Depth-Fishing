@@ -623,9 +623,9 @@ export class KyotoJapan extends BaseLocation {
     this._waterfall = new Waterfall({
       radius: 6.6,
       innerRadius: 6.18,
-      yBase: -0.15,
-      heightMin: 2.2,
-      heightMax: 3.1,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(theme?.waterColor ?? 0x496f76, keyColor, 0.35),
       opacity: 0.58,
       density: 0.78,

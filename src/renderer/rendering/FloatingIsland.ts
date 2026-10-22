@@ -21,7 +21,6 @@ import {
   hashSeed,
   mixHex,
   shade,
-  snap,
   type InstancedVoxel,
 } from './ArtKit';
 
@@ -51,6 +50,7 @@ export class FloatingIsland {
     const rng = createRng(hashSeed(seedText));
     const radiusScale = palette.radiusScale ?? 1;
     this.radius = 6.35 * radiusScale;
+    this.group.name = 'sanctuary-terrain';
 
     const grass = palette.grass;
     const grassWarm = mixHex(grass, 0xd8c88c, 0.22);
@@ -220,9 +220,9 @@ export class FloatingIsland {
         }
         if (band.moss && distance > coast - step * 2) color.lerp(new THREE.Color(0x73856a), 0.35);
         cells.push({
-          x: snap(cx, step),
+          x: cx,
           y,
-          z: snap(cz, step),
+          z: cz,
           w: step,
           h: band.thickness,
           d: step,

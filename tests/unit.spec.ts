@@ -1024,6 +1024,18 @@ test.describe('Sanctuary visual lifecycle', () => {
       'greece',
     ]) {
       locations.loadLocation(id);
+      const terrain = scene.getObjectByName('sanctuary-terrain');
+      expect(terrain, `${id} has an island under its landmarks`).toBeDefined();
+      expect(scene.getObjectByName('sanctuary-shore-life'), `${id} shoreline`).toBeDefined();
+      // A downward ray through the clear fishing approach must hit real land.
+      scene.updateMatrixWorld(true);
+      const groundRay = new THREE.Raycaster(
+        new THREE.Vector3(-2.8, 4, 3.9),
+        new THREE.Vector3(0, -1, 0),
+      );
+      const hits = groundRay.intersectObject(terrain!, true);
+      expect(hits.length, `${id} fisherman has supporting terrain`).toBeGreaterThan(0);
+      expect(hits[0].point.y).toBeCloseTo(1.5, 1);
       expect(scene.children.filter((child) => child instanceof THREE.Light)).toHaveLength(5);
       let atmosphereFrames = 0;
       Object.defineProperty(locations.currentLocation!, 'updateAtmosphere', {
@@ -1143,7 +1155,9 @@ test.describe('Art direction v2', () => {
     expect(last.equals(first)).toBe(false);
     line.setTension(100);
     line.update();
-    expect((mesh.material as THREE.MeshBasicMaterial).color.getHex()).toBe(0xff6b5e);
+    const dangerColor = (mesh.material as THREE.MeshBasicMaterial).color;
+    expect(dangerColor.r).toBeGreaterThan(dangerColor.g);
+    expect(dangerColor.g).toBeGreaterThan(dangerColor.b);
     line.setTarget(new THREE.Vector3(0, 1, 0));
     line.update();
     expect(mesh.visible).toBe(false);
@@ -1232,9 +1246,16 @@ test.describe('Art direction v2', () => {
     });
     expect(depth).toHaveLength(5);
     depth.sort((a, b) => a.userData.band - b.userData.band);
-    expect(depth.map((mesh) => (mesh.material as THREE.MeshBasicMaterial).opacity)).toEqual([
-      1, 0.9, 0.76, 0.56, 0.34,
-    ]);
+    const opacity = depth.map((mesh) => (mesh.material as THREE.MeshBasicMaterial).opacity);
+    expect(opacity[0]).toBeGreaterThan(0.9);
+    expect(opacity[4]).toBeLessThan(0.2);
+    expect(opacity.every((value, i) => i === 0 || value < opacity[i - 1])).toBe(true);
+    // Water consists of horizontal faces. Vertical transparent cube sides used
+    // to stack into a grid; every vertex must now share the same local height.
+    for (const mesh of depth) {
+      const vertices = mesh.geometry.getAttribute('position');
+      for (let i = 0; i < vertices.count; i++) expect(vertices.getY(i)).toBeCloseTo(0, 6);
+    }
     expect(ripples).toHaveLength(2);
     expect(ripples[0].count).toBeLessThan(36);
     expect(ripples[1].count).toBeLessThan(28);

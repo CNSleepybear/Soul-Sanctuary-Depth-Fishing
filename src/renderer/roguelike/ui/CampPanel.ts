@@ -15,6 +15,7 @@ import { BAITS } from '../../../shared/constants';
 import { d, toast, sectionTitle } from './run-ui-helpers';
 import { i18n } from '../../i18n/I18n';
 import { svgIcon, baitIconName, relicIconName, achievementIconName } from '../../ui/icons';
+import { locationIllustration } from '../../ui/LocationIllustration';
 import type { IconName } from '../../ui/icons';
 
 export interface CampPanelCallbacks {
@@ -156,6 +157,7 @@ export class CampPanel {
     const accent = '#' + (destination.theme?.uiAccent ?? 0xa9c3a0).toString(16).padStart(6, '0');
     hero.style.setProperty('--location-accent', accent);
     hero.innerHTML = `
+      <span class="camp-hero__art">${locationIllustration(destination.id)}</span>
       <span class="camp-hero__eyebrow">${svgIcon('pin', 10)}${i18n.t('camp.nextSanctuary')}</span>
       <strong class="camp-hero__name">${destination.name[i18n.lang]}</strong>
       <span class="camp-hero__en">${
@@ -282,6 +284,7 @@ export class CampPanel {
       }
 
       card.innerHTML = `
+        <span class="location-card__art">${locationIllustration(loc.id)}</span>
         <span class="location-card__index">${String(idx + 1).padStart(2, '0')}${
           unlocked ? '' : ` ${svgIcon('lock', 8)}`
         }</span>

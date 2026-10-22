@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/30-camp-v2.png" alt="Soul Sanctuary Screenshot" width="400">
+  <img src="screenshots/art-v3/japan-preview.png" alt="京都落樱：浮岛、木栈钓位与局部跌水，实际游戏截图" width="640">
 </p>
 
 ---
@@ -61,21 +61,36 @@
 
 ### 低保真像素低多边形（Retro Low-Poly Pixel Art）
 
-Soul Sanctuary 采用独特的 **400×300 内部渲染 → CSS 像素化放大** 管线，所有 3D 模型由 `BoxGeometry` 体素块构建，**不使用任何外部纹理或模型文件**。
+Soul Sanctuary 使用 **400×300 / 560×420 / 640×480 原生缓冲 + CSS 像素化显示**，正交相机展示由 `BoxGeometry` 体素块构建的微缩场景，水面使用水平面片，**不使用任何外部纹理或模型文件**。
+
+### 第三轮美术升级 · 岸边生活（2026-10-22）
+
+- **完整浮岛**：修复京都、中国、赛博、英国、法国、德国六个场景缺失地形的问题，12 个圣地共享连续台地与分层岩壁。
+- **清透水面**：消除重叠透明方块的网格感，补全岛下水域；五档水色向外淡出，整圈水幕改为三处局部跌水。
+- **岸边生活**：新增按地点配色的花园、雪覆灌木、芦苇、木栈钓位、木箱、桶和岸灯；蝴蝶、夜间光点与游鱼缓慢活动。
+- **旅行手账界面**：12 张原创 SVG 地标插画、营地目的地卡、地点编号铭牌、黄铜色镜头控件和统一工具栏；400×300 小窗下主按钮与工具栏互不遮挡。
+- **透明桌面**：移除窗口级灰色光晕，空白区域保持透明；保留像素体素风格与中英双语。
+
+<p align="center">
+  <img src="screenshots/art-v3/contact-sheet.png" alt="第三轮升级后的十二圣地实机总览" width="960">
+  <img src="screenshots/art-v3/camp.png" alt="带原创地标插画的营地面板" width="480">
+</p>
+
+实现、参考与复验步骤见 [第三轮美术升级记录](docs/art-upgrade-v3.md)。截图均来自实际 Electron 程序；浅色底仅用于文档展示，应用窗口仍然透明。
 
 | 视觉特性 | 说明 |
 |----------|------|
 | **渲染分辨率** | 400×300（内部），通过 `image-rendering: pixelated` CSS 放大 |
-| **几何体** | 纯 BoxGeometry 体素，所有建筑/树木/鱼模型由方块拼成 |
+| **几何体** | 建筑/树木/鱼使用 BoxGeometry 体素；水面采用无侧壁的水平 PlaneGeometry 实例 |
 | **材质** | `MeshLambertMaterial` + `flatShading: true`，无平滑法线 |
 | **光照** | 五灯结构：低环境光 + 暖/冷主光 + 轮廓光 + 水面点光 + 半球反弹；阴影收紧到岛体 |
 | **后期** | `PostFX`：曝光/对比/饱和、暖冷分离、亮部泛光、alpha 遮罩暗角、4×4 Bayer 抖动（透明像素不变） |
 | **配色** | 12 个地点各有一套 **6 色脚本**（key/shadow/base/accent/glow/veil），写入 `location-data.ts` |
 | **浮岛** | 7 层手工台地（草皮 0.25 网格 + 土坡 + 3 层岩层 + 水下岛尖），InstancedMesh 地形与水面 |
-| **水面** | 5 档深度色带 + 外缘渐隐、连续阶梯泡沫环带、双层短弧波纹、地标色倒影、实例化闪烁 |
+| **水面** | 完整水平水域、5 档深度色带与外缘渐隐、细泡沫与短弧波纹、短横向倒影、局部跌水、游鱼 |
 | **远景** | 透明窗口不使用地平线剪影：改为微型浮岛 + 半透明云 + 岛底薄雾，环绕时自然提供景深 |
 | **粒子** | 12 种粒子类型（樱花瓣/萤火虫/霓虹雨/极光等），每场景 80+ |
-| **窗口** | 透明背景，浮岛悬于桌面，frameless 自定义标题栏 |
+| **窗口** | 透明背景，浮岛悬于桌面，无窗口级灰色蒙层，frameless 自定义标题栏 |
 
 ### 参考作品（只借方法，不取素材）
 
@@ -334,6 +349,10 @@ npm run format
 # 运行测试
 npm test
 npm run test:smoke
+
+# 实机美术复验：12 地点 + 三档窗口 + 渲染预算 + 透明度
+$env:ART_OUTPUT='screenshots/art-v3'
+node scripts/art-review.cjs
 ```
 
 ---
@@ -377,6 +396,7 @@ SoulSanctuary/
 | [`art-direction-v2.md`](docs/art-direction-v2.md) | 第二轮美术方向与硬性规范（微光圣地） |
 | [`art-reference-analysis.md`](docs/art-reference-analysis.md) | 同类游戏美术拆解（10 款，含引用） |
 | [`art-upgrade-v2.md`](docs/art-upgrade-v2.md) | 第二轮美术升级交付记录 |
+| [`art-upgrade-v3.md`](docs/art-upgrade-v3.md) | 第三轮升级：完整地形、清透水面、岸边生活与旅行手账界面 |
 | [`design-audit.md`](docs/design-audit.md) | 游戏设计深度审核（8 维 16 项）|
 | [`camp-audit.md`](docs/camp-audit.md) | 营地系统设计审核 |
 | [`market-research.md`](docs/market-research.md) | 市场调研与竞品分析 |
@@ -427,6 +447,8 @@ SoulSanctuary/
 - [x] 桌面 Widget 特性（透明窗口/托盘/全局快捷键）
 - [x] 中英双语支持
 - [x] 营地升级系统
+- [x] 第三轮美术升级（12 圣地共享岸景、地标插画、水面与小窗适配）
+- [x] 本地背景音乐歌单、音量与播放偏好保存
 - [ ] 音效系统完善
 - [ ] Steam 发布
 - [ ] 排行榜与社区功能

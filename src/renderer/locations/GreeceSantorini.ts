@@ -450,9 +450,9 @@ export class GreeceSantorini extends BaseLocation {
     this.waterfall = new Waterfall({
       radius: islandRadius + 0.25,
       innerRadius: islandRadius - 0.2,
-      yBase: -0.2,
-      heightMin: 2.2,
-      heightMax: 3.2,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(domeBlue, 0xbfe4f0, 0.5),
       opacity: 0.45,
       density: 0.66,

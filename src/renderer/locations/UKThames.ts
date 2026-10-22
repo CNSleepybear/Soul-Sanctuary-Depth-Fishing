@@ -372,9 +372,9 @@ export class UKThames extends BaseLocation {
     this._waterfall = new Waterfall({
       radius: 6.64,
       innerRadius: 6.2,
-      yBase: -0.15,
-      heightMin: 2.2,
-      heightMax: 3.0,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(theme?.waterColor ?? 0x455a64, keyColor, 0.3),
       opacity: 0.5,
       density: 0.7,

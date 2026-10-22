@@ -229,6 +229,8 @@ export class SceneUI {
     const loc = LOCATIONS[index];
     if (!loc) return;
     const total = String(LOCATIONS.length);
+    this.locationPlate.dataset.number = String(index + 1).padStart(2, '0');
+    document.body.dataset.location = loc.id;
     this.plateIndex.textContent = String(index + 1).padStart(2, '0');
     const totalEl = this.locationPlate.querySelector('.plate-total');
     if (totalEl) totalEl.textContent = total;

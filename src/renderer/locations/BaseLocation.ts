@@ -18,6 +18,7 @@ import { FloatingIsland } from '../rendering/FloatingIsland';
 import { MaterialCache } from '../rendering/MaterialCache';
 import { SanctuaryWater } from '../rendering/SanctuaryWater';
 import { SanctuaryDetails } from '../rendering/SanctuaryDetails';
+import { ShoreLife } from '../rendering/ShoreLife';
 import { setGrade } from '../rendering/PostFX';
 import {
   buildCloud,
@@ -53,6 +54,7 @@ export abstract class BaseLocation {
   private skyClouds: THREE.Group | null = null;
   private mistGroup: THREE.Group | null = null;
   private sanctuaryWater: SanctuaryWater | null = null;
+  private shoreLife: ShoreLife | null = null;
   private baseParticleCount = 90;
 
   // Soul sanctuary ambience
@@ -149,6 +151,10 @@ export abstract class BaseLocation {
     // ── Subclass geometry ──
     this.buildGeometry();
 
+    // Terrain is a shared foundation: a landmark-only scene still needs land.
+    // Six locations build their props directly, without calling createIsland().
+    if (!this.island) this.group.add(this.createIsland().group);
+
     // ── Shared water body + ground shadow ──
     this.sanctuaryWater = new SanctuaryWater(this.data, this.id);
     this.group.add(this.sanctuaryWater.group);
@@ -160,6 +166,8 @@ export abstract class BaseLocation {
     // ── Location-specific atmosphere hook ──
     this.buildAtmosphere();
     this.group.add(new SanctuaryDetails(this.id).group);
+    this.shoreLife = new ShoreLife(this.data);
+    this.group.add(this.shoreLife.group);
 
     // ── Depth layers shared by every sanctuary ──
     this._buildSkyProps();
@@ -168,6 +176,7 @@ export abstract class BaseLocation {
 
   /** REF-4: create a theme-aware, id-seeded floating island. */
   protected createIsland(): FloatingIsland {
+    if (this.island) return this.island;
     const island = new FloatingIsland(this.data.theme?.island, this.id);
     this.island = island;
     return island;
@@ -441,6 +450,7 @@ export abstract class BaseLocation {
   /** Water + island animation (kept separate because locations own their own loops). */
   updateScenery(time: number): void {
     this.sanctuaryWater?.update(time);
+    this.shoreLife?.update(time);
     this.island?.update(time);
     if (this.mistGroup) updateMist(this.mistGroup, time);
   }
@@ -522,6 +532,7 @@ export abstract class BaseLocation {
     this.island?.dispose();
     this.island = null;
     this.mistGroup = null;
+    this.shoreLife = null;
 
     // Restore original background if changed
     this.scene.background = this.originalBackground ?? null;

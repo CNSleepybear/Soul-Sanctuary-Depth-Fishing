@@ -476,9 +476,9 @@ export class FranceSeine extends BaseLocation {
     this._waterfall = new Waterfall({
       radius: 6.62,
       innerRadius: 6.2,
-      yBase: -0.15,
-      heightMin: 2.2,
-      heightMax: 3.1,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(theme?.waterColor ?? 0x4c6864, keyColor, 0.35),
       opacity: 0.55,
       density: 0.72,

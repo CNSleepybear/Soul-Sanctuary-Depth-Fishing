@@ -428,9 +428,9 @@ export class GermanyBlackForest extends BaseLocation {
     this._waterfall = new Waterfall({
       radius: 6.58,
       innerRadius: 6.16,
-      yBase: -0.15,
-      heightMin: 2.2,
-      heightMax: 3.0,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(0xaaccdd, keyColor, 0.3),
       opacity: 0.5,
       density: 0.7,

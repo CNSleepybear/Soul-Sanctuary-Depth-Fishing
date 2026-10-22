@@ -17,9 +17,9 @@ const MAX_SAG = 1.0;
 // 0.0625 = 1px at 400×300: the thinnest line that stays visible per art spec.
 const LINE_THICKNESS = 0.0625;
 
-const COLOR_SLACK = 0x6fe0a0; // green — safe
-const COLOR_MID = 0xf2cf6b; // yellow — careful
-const COLOR_TAUT = 0xff6b5e; // coral — danger
+const COLOR_SLACK = 0xc1d6b2; // pale sage — safe
+const COLOR_MID = 0xe5c681; // brass — careful
+const COLOR_TAUT = 0xe48f7e; // coral — danger
 
 export class FishingLine {
   readonly group: THREE.Group;

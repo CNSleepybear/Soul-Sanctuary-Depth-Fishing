@@ -1,15 +1,21 @@
 // Capture the real Electron renderer for visual review. Does not change saves.
 const { _electron } = require('@playwright/test');
-const { mkdir } = require('node:fs/promises');
+const { mkdir, writeFile } = require('node:fs/promises');
+const { mkdtempSync } = require('node:fs');
+const { tmpdir } = require('node:os');
 const path = require('node:path');
 const sharp = require('sharp');
 
 async function main() {
-  const output = path.resolve('screenshots/art-review');
+  const output = path.resolve(process.env.ART_OUTPUT || 'screenshots/art-review');
   await mkdir(output, { recursive: true });
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
-  const app = await _electron.launch({ args: ['.', '--no-sandbox', '--disable-gpu'], env });
+  const profile = mkdtempSync(path.join(tmpdir(), 'soul-art-review-'));
+  const app = await _electron.launch({
+    args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${profile}`],
+    env,
+  });
   const errors = [];
   const stats = {};
   try {
@@ -113,6 +119,33 @@ async function main() {
       });
       await soulPanel.waitFor({ state: 'hidden' });
       await page.screenshot({ path: path.join(output, `japan-${name}.png`), omitBackground: true });
+      const startBounds = await page.locator('#btn-start').boundingBox();
+      const toolbarBounds = await page.locator('#scene-toolbar').boundingBox();
+      if (startBounds && toolbarBounds) {
+        const overlap =
+          startBounds.x < toolbarBounds.x + toolbarBounds.width &&
+          startBounds.x + startBounds.width > toolbarBounds.x &&
+          startBounds.y < toolbarBounds.y + toolbarBounds.height &&
+          startBounds.y + startBounds.height > toolbarBounds.y;
+        if (overlap) errors.push(`${name}: fishing button overlaps toolbar`);
+      }
+      await page.locator('#btn-start').click();
+      await page.locator('#camp-panel').waitFor({ state: 'visible' });
+      await page.screenshot({ path: path.join(output, `camp-${name}.png`) });
+      const campBounds = await page.locator('#camp-panel').boundingBox();
+      const footerBounds = await page.locator('#btn-start-run').boundingBox();
+      if (
+        !campBounds ||
+        !footerBounds ||
+        campBounds.x < 0 ||
+        campBounds.y < 0 ||
+        campBounds.x + campBounds.width > width ||
+        campBounds.y + campBounds.height > height ||
+        footerBounds.y + footerBounds.height > height
+      ) {
+        errors.push(`${name}: camp or embark button exceeds viewport`);
+      }
+      await page.locator('#camp-panel .panel-close-btn').click();
     }
     await setReviewSize(640, 480);
 
@@ -175,20 +208,15 @@ async function main() {
         .filter(Boolean)
         .sort((a, b) => b.calls - a.calls)[0] ?? null;
     const transparencyPassed = cornerAlpha.every((alpha) => alpha === 0);
-    console.log(
-      JSON.stringify(
-        {
-          output,
-          locations: locations.length,
-          errors,
-          transparency: { cornerAlpha, coverage, passed: transparencyPassed },
-          budget: { ...budget, worstLocation },
-          stats,
-        },
-        null,
-        2,
-      ),
-    );
+    const report = {
+      locations: locations.length,
+      errors,
+      transparency: { cornerAlpha, coverage, passed: transparencyPassed },
+      budget: { ...budget, worstLocation },
+      stats,
+    };
+    await writeFile(path.join(output, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+    console.log(JSON.stringify({ output, ...report }, null, 2));
     if (errors.length || !transparencyPassed || budget.violations.length) process.exitCode = 1;
   } finally {
     await app.close();

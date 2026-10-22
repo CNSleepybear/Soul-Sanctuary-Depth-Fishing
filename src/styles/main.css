@@ -108,27 +108,7 @@ body {
   position: relative;
 }
 
-/* Soft vignette so the island reads on bright desktops without a dark box. */
-#app::before {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 96%;
-  height: 96%;
-  background: radial-gradient(
-    circle,
-    rgba(22, 25, 26, 0.22) 0%,
-    rgba(22, 25, 26, 0.12) 24%,
-    rgba(22, 25, 26, 0.04) 44%,
-    rgba(22, 25, 26, 0.01) 58%,
-    transparent 70%
-  );
-  pointer-events: none;
-  z-index: 0;
-}
-
+/* Depth and atmosphere belong to scene geometry; empty desktop stays clear. */
 #game-canvas {
   display: block;
   width: 100%;
@@ -568,20 +548,34 @@ body {
   position: absolute;
   top: 54px;
   left: 12px;
-  width: min(228px, 56vw);
+  width: min(218px, 54vw);
   padding: 7px 10px 9px;
   pointer-events: none;
-  border-left: 1px solid var(--location-accent);
-  border-radius: 0 var(--r-md) var(--r-md) 0;
+  border: 1px solid rgba(239, 231, 214, 0.14);
+  border-left: 2px solid var(--location-accent);
+  border-radius: 3px 8px 8px 3px;
   background: linear-gradient(
     100deg,
-    rgba(22, 25, 26, 0.92) 0%,
-    rgba(22, 25, 26, 0.78) 58%,
-    rgba(22, 25, 26, 0.28) 88%,
-    rgba(22, 25, 26, 0) 100%
+    rgba(31, 39, 36, 0.96) 0%,
+    rgba(31, 39, 36, 0.92) 58%,
+    rgba(31, 39, 36, 0.84) 88%,
+    rgba(31, 39, 36, 0.78) 100%
   );
+  box-shadow:
+    0 5px 16px rgba(8, 10, 11, 0.16),
+    inset 0 1px rgba(239, 231, 214, 0.07);
   text-shadow: 0 1px 2px rgba(8, 10, 11, 0.85);
   transition: opacity var(--dur) var(--ease);
+}
+#location-plate::after {
+  content: attr(data-number);
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  font: 38px/1 var(--font-pixel);
+  color: var(--location-accent);
+  opacity: 0.07;
+  pointer-events: none;
 }
 .plate-head {
   display: flex;
@@ -608,7 +602,7 @@ body {
   flex: 1;
 }
 .plate-progress {
-  color: var(--paper-faint);
+  color: var(--paper-dim);
   font-size: var(--fs-8);
   letter-spacing: 1px;
 }
@@ -625,7 +619,7 @@ body {
 .plate-name-en {
   display: block;
   font-family: var(--font-pixel);
-  font-size: var(--fs-9);
+  font-size: 10px;
   letter-spacing: 1px;
   color: var(--paper-dim);
   white-space: nowrap;
@@ -668,7 +662,11 @@ body {
   font-size: var(--fs-9);
   letter-spacing: 2.5px;
   text-transform: uppercase;
-  color: var(--gold-dim);
+  color: var(--paper);
+  background: rgba(31, 39, 36, 0.82);
+  border: 1px solid var(--line-soft);
+  border-radius: 20px;
+  padding: 4px 10px;
   text-shadow: 0 1px 4px rgba(8, 10, 11, 0.8);
   pointer-events: none;
   white-space: nowrap;
@@ -688,7 +686,7 @@ body {
   padding: 7px 20px;
   background: linear-gradient(180deg, #efe2c2 0%, #ddc493 58%, #d3b77f 100%);
   border: 1px solid #f4e8c8;
-  border-radius: 8px;
+  border-radius: 5px;
   color: #22251f;
   font-family: var(--font-sans);
   font-size: 12px;
@@ -737,7 +735,14 @@ body {
   bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 3px;
+  padding: 4px;
+  background: rgba(25, 33, 31, 0.92);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow:
+    0 4px 14px rgba(8, 10, 11, 0.24),
+    inset 0 1px rgba(239, 231, 214, 0.04);
   pointer-events: none;
 }
 .scene-tool {
@@ -746,13 +751,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--ink-soft);
-  border: 1px solid var(--line);
+  background: transparent;
+  border: 1px solid transparent;
   border-radius: var(--r-md);
   color: var(--paper-dim);
   cursor: pointer;
   pointer-events: all;
-  box-shadow: 0 3px 10px rgba(8, 10, 11, 0.35);
+  box-shadow: none;
   transition:
     background var(--dur-fast) var(--ease),
     border-color var(--dur-fast) var(--ease),
@@ -1603,8 +1608,10 @@ body[data-phase='fishing'] #scene-toolbar:hover {
   position: fixed;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(160deg, #1f2425 0%, #191d1e 42%, #16191a 100%);
-  border: 1px solid var(--line);
+  background:
+    radial-gradient(ellipse at top right, rgba(169, 195, 160, 0.055), transparent 60%),
+    linear-gradient(160deg, #252d2a 0%, #1d2422 42%, #191f1e 100%);
+  border: 1px solid rgba(224, 185, 120, 0.24);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-panel);
   color: var(--paper);
@@ -1728,7 +1735,8 @@ body[data-phase='fishing'] #scene-toolbar:hover {
 
 .camp-hero {
   position: relative;
-  padding: 8px 10px 9px;
+  padding: 10px 102px 11px 10px;
+  min-height: 94px;
   margin-bottom: 2px;
   border: 1px solid var(--line-soft);
   border-left: 1px solid var(--location-accent);
@@ -1737,6 +1745,36 @@ body[data-phase='fishing'] #scene-toolbar:hover {
     radial-gradient(120% 140% at 0% 0%, rgba(224, 185, 120, 0.1), transparent 58%),
     rgba(239, 231, 214, 0.035);
   overflow: hidden;
+}
+.location-illustration {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.camp-hero__art {
+  position: absolute;
+  width: 116px;
+  height: 88px;
+  right: -5px;
+  bottom: 4px;
+  pointer-events: none;
+}
+.location-card__art {
+  display: block;
+  width: 100%;
+  height: 43px;
+  margin-top: -2px;
+  transition:
+    transform var(--dur) var(--ease),
+    opacity var(--dur) var(--ease);
+}
+.location-card[data-locked='true'] .location-card__art {
+  opacity: 0.42;
+  filter: saturate(0.4);
+}
+.location-card[data-selected='true'] .location-card__art,
+.location-card[data-locked='false']:hover .location-card__art {
+  transform: translateY(-2px);
 }
 .camp-hero__eyebrow {
   display: flex;
@@ -3857,6 +3895,46 @@ input[type='range'].ss-range::-webkit-slider-thumb {
   }
   .soul-card {
     min-height: 72px;
+  }
+}
+
+@media (max-width: 440px) {
+  #btn-start {
+    left: 12px;
+    bottom: 12px;
+    transform: none;
+    padding: 7px 13px;
+  }
+  #btn-start:hover {
+    transform: translateY(-1px);
+  }
+  #btn-start:active {
+    transform: translateY(1px);
+  }
+  #scene-toolbar {
+    gap: 2px;
+    padding: 3px;
+  }
+  #location-plate {
+    top: 42px;
+    width: 196px;
+  }
+  .plate-mood {
+    display: none;
+  }
+  .camp-hero {
+    padding-right: 94px;
+    min-height: 82px;
+  }
+  .camp-hero__art {
+    width: 104px;
+    height: 76px;
+  }
+  .camp-hero__name {
+    font-size: 11px;
+  }
+  .location-card__art {
+    height: 35px;
   }
 }
 

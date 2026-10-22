@@ -482,9 +482,9 @@ export class ChinaBamboo extends BaseLocation {
     this._waterfall = new Waterfall({
       radius: 6.6,
       innerRadius: 6.18,
-      yBase: -0.15,
-      heightMin: 2.2,
-      heightMax: 3.0,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(theme?.waterColor ?? 0x385e5b, keyColor, 0.4),
       opacity: 0.55,
       density: 0.72,

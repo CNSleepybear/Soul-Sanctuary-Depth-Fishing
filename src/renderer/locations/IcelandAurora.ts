@@ -372,9 +372,9 @@ export class IcelandAurora extends BaseLocation {
     this.waterfall = new Waterfall({
       radius: islandRadius + 0.25,
       innerRadius: islandRadius - 0.2,
-      yBase: -0.2,
-      heightMin: 2.4,
-      heightMax: 3.4,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(key, 0xbfe0e8, 0.5),
       opacity: 0.45,
       density: 0.6,

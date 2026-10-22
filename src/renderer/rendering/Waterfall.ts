@@ -1,5 +1,5 @@
 // ===== src/renderer/rendering/Waterfall.ts =====
-// Layered voxel waterfall ringing the island edge.
+// Three small voxel cascades along the island edge.
 //
 // ART V2 (docs/art-direction-v2.md §2.4 / §4.2):
 // - three water curtains at different radii, falling at different speeds and
@@ -114,8 +114,11 @@ export class Waterfall {
     const rng = createRng(
       Math.round((radius * 1000 + innerRadius * 100 + heightMax * 10) * 7) + 13,
     );
-    const circumference = 2 * Math.PI * radius;
-    const slots = Math.max(6, Math.min(42, Math.floor((circumference / 0.8) * density)));
+    // Local cascades leave rock visible. Full concentric curtains read as a
+    // cage around the diorama, particularly through a transparent window.
+    const slots = Math.max(9, Math.round(18 * density));
+    const cascadeCenters = [-2.6, -0.2, 1.45];
+    const cascadeWidth = 0.28;
 
     // Single unit box shared by every waterfall instance.
     this.geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -146,16 +149,19 @@ export class Waterfall {
       mesh.receiveShadow = false;
 
       const layerSlots: CurtainLayer['slots'] = [];
-      const arc = (Math.PI * 2) / slots;
+      const perCascade = Math.ceil(slots / cascadeCenters.length);
+      const arc = cascadeWidth / perCascade;
       for (let i = 0; i < slots; i++) {
-        const angle = (i / slots) * Math.PI * 2 + (rng() - 0.5) * arc * 0.35;
+        const center = cascadeCenters[Math.floor(i / perCascade)];
+        const angle =
+          center + ((i % perCascade) / Math.max(1, perCascade - 1) - 0.5) * cascadeWidth;
         const r = innerRadius + (radius - innerRadius) * spec.radial * (0.92 + rng() * 0.16);
         const h = (heightMin + rng() * (heightMax - heightMin)) * spec.height;
         layerSlots.push({
           angle,
           radius: r,
           height: snap(h, 0.125),
-          width: snap(Math.max(0.25, arc * r * 0.78), 0.0625),
+          width: snap(Math.max(0.125, arc * r * 0.85), 0.0625),
           thickness: snap(spec.thick + rng() * 0.03, 0.0625),
           phase: rng(),
         });
@@ -183,7 +189,7 @@ export class Waterfall {
 
     const bottomY = yBase - heightMax;
     for (let i = 0; i < foamCount; i++) {
-      const angle = (i / foamCount) * Math.PI * 2 + rng() * 0.4;
+      const angle = cascadeCenters[i % 3] + (rng() - 0.5) * cascadeWidth;
       this.foamSlots.push({
         angle,
         radius: innerRadius + (radius - innerRadius) * (0.2 + rng() * 0.7),
@@ -211,7 +217,7 @@ export class Waterfall {
 
     for (let i = 0; i < mistCount; i++) {
       this.mistSlots.push({
-        angle: (i / mistCount) * Math.PI * 2 + rng() * 0.6,
+        angle: cascadeCenters[i % 3] + (rng() - 0.5) * cascadeWidth,
         radius: radius * (0.96 + rng() * 0.1),
         phase: rng(),
         baseY: bottomY + rng() * 0.3,

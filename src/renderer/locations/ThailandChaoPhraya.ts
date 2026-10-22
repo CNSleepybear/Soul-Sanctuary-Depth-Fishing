@@ -417,9 +417,9 @@ export class ThailandChaoPhraya extends BaseLocation {
     this.waterfall = new Waterfall({
       radius: islandRadius + 0.25,
       innerRadius: islandRadius - 0.2,
-      yBase: -0.2,
-      heightMin: 2.2,
-      heightMax: 3.2,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(riverDark, 0x9fd0a8, 0.4),
       opacity: 0.55,
       density: 0.7,

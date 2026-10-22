@@ -386,9 +386,9 @@ export class USACyberpunk extends BaseLocation {
     this._waterfall = new Waterfall({
       radius: 6.62,
       innerRadius: 6.2,
-      yBase: -0.15,
-      heightMin: 2.0,
-      heightMax: 2.8,
+      yBase: 1.4,
+      heightMin: 3.2,
+      heightMax: 3.35,
       color: mixHex(0x2a3a4a, cyan, 0.45),
       opacity: 0.5,
       density: 0.65,

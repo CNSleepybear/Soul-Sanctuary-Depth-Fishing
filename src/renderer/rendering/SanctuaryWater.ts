@@ -15,7 +15,7 @@ const TILE = 0.5;
 const INNER = 4.9;
 const OUTER = 7.9;
 const FOAM_SEGMENTS = 64;
-const FOAM_WIDTH = 0.25;
+const FOAM_WIDTH = 0.1;
 const FOAM_Y = WATER_Y + 0.075;
 
 function makeFoamRing(seedOffset: number): THREE.BufferGeometry {
@@ -77,12 +77,15 @@ function makeInstanced(
   opacity: number,
   opts: { additive?: boolean; depthWrite?: boolean } = {},
 ): THREE.InstancedMesh {
-  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  // A single horizontal face avoids transparent cube sides stacking into a
+  // wire basket. Tiles share exact edges and one elevation, without overlaps.
+  const geometry = new THREE.PlaneGeometry(1, 1);
+  geometry.rotateX(-Math.PI / 2);
   const material = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,
     opacity,
-    depthWrite: opts.depthWrite ?? true,
+    depthWrite: opts.depthWrite ?? false,
     blending: opts.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
   });
   const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, cells.length));
@@ -134,9 +137,8 @@ export class SanctuaryWater {
         const cx = snap(x + TILE / 2, TILE);
         const cz = snap(z + TILE / 2, TILE);
         const r = Math.hypot(cx, cz);
-        if (r < INNER || r > OUTER) continue;
-        const t = Math.min(1, (r - INNER) / (OUTER - INNER));
-        const wobble = Math.sin(cx * 1.1 + cz * 0.7 + seedOffset) * 0.03;
+        if (r > OUTER) continue;
+        const t = Math.max(0, Math.min(1, (r - INNER) / (OUTER - INNER)));
         const color =
           t < 0.45
             ? mixHex(shallow, deep, (t / 0.45) * 0.55)
@@ -144,19 +146,20 @@ export class SanctuaryWater {
         const band = Math.min(bandCount - 1, Math.floor(t * bandCount));
         bands[band].push({
           x: cx,
-          y: WATER_Y + wobble,
+          y: WATER_Y,
           z: cz,
-          w: TILE + 0.06,
-          h: 0.08,
-          d: TILE + 0.06,
-          color: shade(color, 1 + wobble * 0.25),
+          w: TILE,
+          h: 1,
+          d: TILE,
+          color,
         });
       }
     }
-    const opacities = [1, 0.9, 0.76, 0.56, 0.34];
+    const opacities = [0.96, 0.84, 0.64, 0.34, 0.12];
     bands.forEach((cells, index) => {
       if (cells.length === 0) return;
-      const mesh = makeInstanced(cells, opacities[index], { depthWrite: index < 2 });
+      const mesh = makeInstanced(cells, opacities[index]);
+      mesh.renderOrder = -5 + index;
       mesh.userData.waterPart = 'depth';
       mesh.userData.band = index;
       this.group.add(mesh);
@@ -221,12 +224,12 @@ export class SanctuaryWater {
         y: WATER_Y + 0.055,
         z: Math.sin(angle) * r,
         color: mixHex(i % 2 === 0 ? glow : accent, shallow, 0.25),
-        w: 0.32,
+        w: 0.45 + (i % 3) * 0.2,
         h: 0.03,
-        d: 1.4 + (i % 3) * 0.3,
+        d: 0.12 + (i % 3) * 0.06,
       });
     }
-    const reflectionMesh = makeInstanced(reflections, 0.28, { additive: true, depthWrite: false });
+    const reflectionMesh = makeInstanced(reflections, 0.2, { additive: true, depthWrite: false });
     reflectionMesh.userData.waterPart = 'reflection';
     this.reflectionMaterial = reflectionMesh.material as THREE.MeshBasicMaterial;
     this.group.add(reflectionMesh);
@@ -280,7 +283,7 @@ export class SanctuaryWater {
   update(time: number): void {
     if (this.foamMaterial && this.foamMesh) {
       const breath = Math.sin(time * 0.85);
-      this.foamMaterial.opacity = 0.56 + breath * 0.16;
+      this.foamMaterial.opacity = 0.28 + breath * 0.08;
       const scale = 1 + breath * 0.004;
       this.foamMesh.scale.set(scale, 1, scale);
     }
