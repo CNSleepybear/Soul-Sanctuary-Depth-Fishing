@@ -24,6 +24,97 @@ import { tmpdir } from 'os';
 test.describe('SoulSanctuary Electron Smoke', () => {
   test.setTimeout(60000);
 
+  test('bundled music plays all tracks, loops, and remembers settings', async () => {
+    const env = { ...process.env };
+    delete (env as Record<string, string | undefined>).ELECTRON_RUN_AS_NODE;
+    const profile = mkdtempSync(join(tmpdir(), 'soul-sanctuary-music-'));
+    const electronApp = await electron.launch({
+      args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${profile}`],
+      executablePath: require('electron'),
+      env,
+    });
+
+    try {
+      const window = await electronApp.firstWindow();
+      await expect(window.locator('#btn-start')).toBeVisible();
+      const music = window.locator('audio[data-soul-music]');
+      await expect(music).toHaveCount(0);
+      const openSettings = async () => {
+        await window.locator('#scene-toolbar [aria-label]').nth(2).click();
+        await expect(window.locator('#music-track')).toBeVisible();
+      };
+      await openSettings();
+      await expect(music).toHaveCount(1);
+
+      const tracks = ['abyssal-lamps', 'bruise-of-ink', 'lingering-threshold'];
+      for (const track of tracks) {
+        await window.locator('#music-track').selectOption(track);
+        await expect
+          .poll(() =>
+            music.evaluate((element) => {
+              const audio = element as HTMLAudioElement;
+              return !audio.paused && audio.currentTime > 0 && audio.error === null;
+            }),
+          )
+          .toBe(true);
+        expect(await music.evaluate((element) => (element as HTMLAudioElement).duration)).toBe(120);
+      }
+
+      // Let the final song actually end, verifying the native ended event and wraparound.
+      await music.evaluate((element) => {
+        const audio = element as HTMLAudioElement;
+        audio.currentTime = audio.duration - 0.15;
+      });
+      await expect(window.locator('#music-track')).toHaveValue(tracks[0]);
+      await expect
+        .poll(() => music.evaluate((element) => (element as HTMLAudioElement).currentTime))
+        .toBeGreaterThan(0);
+
+      const originalSource = await music.getAttribute('src');
+      await window.evaluate(() => {
+        window.dispatchEvent(
+          new CustomEvent('soul:dev', { detail: { type: 'loadLocation', locationId: 'china' } }),
+        );
+      });
+      await expect(music).toHaveAttribute('src', originalSource!);
+      await expect(music).toHaveCount(1);
+
+      await window.locator('#music-volume').fill('23');
+      await expect(window.locator('#music-volume-value')).toHaveText('23%');
+      expect(await music.evaluate((element) => (element as HTMLAudioElement).volume)).toBe(0.23);
+      await window.locator('#music-enabled').uncheck();
+      expect(await music.evaluate((element) => (element as HTMLAudioElement).paused)).toBe(true);
+
+      // A disabled playlist must stay silent when choosing another song and after reload.
+      await window.locator('#music-track').selectOption(tracks[1]);
+      expect(await music.evaluate((element) => (element as HTMLAudioElement).paused)).toBe(true);
+      await window.reload();
+      await expect(window.locator('#btn-start')).toBeVisible();
+      await openSettings();
+      await expect(music).toHaveCount(0);
+      await expect(window.locator('#music-enabled')).not.toBeChecked();
+      await expect(window.locator('#music-track')).toHaveValue(tracks[1]);
+      await expect(window.locator('#music-volume')).toHaveValue('23');
+      await window.locator('#music-enabled').check();
+      await expect
+        .poll(() =>
+          music.evaluate((element) => {
+            const audio = element as HTMLAudioElement;
+            return !audio.paused && audio.currentTime > 0 && audio.error === null;
+          }),
+        )
+        .toBe(true);
+      expect(await music.evaluate((element) => (element as HTMLAudioElement).volume)).toBe(0.23);
+      await window.screenshot({ path: 'tests/screenshots/07-music-settings.png' });
+    } finally {
+      await electronApp
+        .evaluate(({ app }) => app.exit(0))
+        .catch(() => {
+          electronApp.process().kill();
+        });
+    }
+  });
+
   test('app launches, renders UI, respects render budget, and completes fishing flow', async () => {
     // ── Launch Electron app ──
     // Use the packaged executable in CI; fall back to the Electron module locally.

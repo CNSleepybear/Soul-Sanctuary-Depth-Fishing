@@ -22,6 +22,9 @@ export const LOCALE_ZH = {
   'settings.slackTip': '松开：松线卸力',
   'settings.fishpediaKey': 'F：鱼类图鉴',
   'settings.escKey': 'ESC：关闭面板',
+  'settings.music': '背景音乐 · 顺序循环',
+  'settings.musicTrack': '当前曲目',
+  'settings.musicVolume': '音乐音量',
 
   // ── UI: Fishing HUD ──
   'fishing.holdToCast': '按住蓄力',
@@ -513,6 +516,9 @@ export const LOCALE_EN: Record<keyof typeof LOCALE_ZH, string> = {
   'settings.slackTip': 'Release: Slack',
   'settings.fishpediaKey': 'F: Fishpedia',
   'settings.escKey': 'ESC: Close panels',
+  'settings.music': 'Music · Loop playlist',
+  'settings.musicTrack': 'Current track',
+  'settings.musicVolume': 'Music volume',
 
   'fishing.holdToCast': 'HOLD TO CAST',
   'fishing.catch': 'CATCH',

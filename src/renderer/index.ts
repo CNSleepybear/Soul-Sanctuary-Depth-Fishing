@@ -20,7 +20,7 @@ import { SoulSanctuaryPanel } from './ui/SoulSanctuaryPanel';
 import { SoulSanctuaryManager } from './locations/SoulSanctuaryManager';
 import { DraggablePanel } from './ui/DraggablePanel';
 import { DailySystem } from './data/DailySystem';
-import { audio, AmbientType } from './audio'; // AUDIO: centralized audio engine
+import { audio, AmbientType, MUSIC_TRACKS } from './audio'; // AUDIO: centralized audio engine
 import {
   APP_VERSION,
   RESOLUTION_PRESETS,
@@ -122,11 +122,13 @@ async function initApp(): Promise<void> {
   // AUDIO: Unlock AudioContext on first user interaction (browser autoplay policy)
   const unlockAudio = () => {
     audio.ensureContext();
-    document.removeEventListener('click', unlockAudio);
-    document.removeEventListener('keydown', unlockAudio);
+    audio.playMusic();
   };
-  document.addEventListener('click', unlockAudio);
-  document.addEventListener('keydown', unlockAudio);
+  // Toolbar buttons stop bubbling; unlock on capture so the first real UI
+  // gesture still starts the playlist and Web Audio effects.
+  document.addEventListener('click', unlockAudio, { once: true, capture: true });
+  document.addEventListener('keydown', unlockAudio, { once: true, capture: true });
+  window.addEventListener('beforeunload', () => audio.dispose(), { once: true });
 
   // Apply stored resolution
   const storedRes = getStoredResolution();
@@ -280,7 +282,7 @@ async function initApp(): Promise<void> {
   sceneUI.onSouls = () => soulPanel.toggle();
   sceneUI.onSettings = () => {
     const panel = new DraggablePanel(i18n.t('settings.title'), 260);
-    panel.setPosition(window.innerWidth / 2 - 130, 100);
+    panel.el.id = 'settings-panel';
     const body = panel.getBody();
     const curRes = getStoredResolution();
     body.innerHTML = [
@@ -311,10 +313,47 @@ async function initApp(): Promise<void> {
             `<option value="${lvl}" ${logger.getLevel() === lvl ? 'selected' : ''}>${LogLevel[lvl as number]}</option>`,
         )
         .join(''),
-      `</select>`,
+      `</select><br><br>`,
+      `<label for="music-enabled" style="color:#ccc;">${i18n.t('settings.music')}</label>`,
+      `<input id="music-enabled" type="checkbox" ${audio.music.enabled ? 'checked' : ''} style="vertical-align:middle;margin-left:8px;">`,
+      `<br><label for="music-track" style="color:#888;">${i18n.t('settings.musicTrack')}</label><br>`,
+      `<select id="music-track" style="max-width:100%;background:#222;color:#ccc;border:1px solid rgba(255,255,255,0.12);font-size:10px;cursor:pointer;">`,
+      MUSIC_TRACKS.map(
+        (track) =>
+          `<option value="${track.id}" ${audio.music.currentTrack.id === track.id ? 'selected' : ''}>${track.title}</option>`,
+      ).join(''),
+      `</select><br>`,
+      `<label for="music-volume" style="color:#888;">${i18n.t('settings.musicVolume')}</label>`,
+      `<input id="music-volume" type="range" min="0" max="100" value="${Math.round(audio.music.volume * 100)}" style="width:96px;vertical-align:middle;">`,
+      `<output id="music-volume-value" for="music-volume">${Math.round(audio.music.volume * 100)}%</output>`,
       `</div>`,
     ].join('');
     document.body.appendChild(panel.el);
+    const musicEnabled = body.querySelector<HTMLInputElement>('#music-enabled')!;
+    const musicTrack = body.querySelector<HTMLSelectElement>('#music-track')!;
+    const musicVolume = body.querySelector<HTMLInputElement>('#music-volume')!;
+    const musicVolumeValue = body.querySelector<HTMLOutputElement>('#music-volume-value')!;
+    musicEnabled.addEventListener('change', () => audio.music.setEnabled(musicEnabled.checked));
+    musicTrack.addEventListener('change', () => audio.music.selectTrack(musicTrack.value));
+    musicVolume.addEventListener('input', () => {
+      audio.music.setVolume(Number(musicVolume.value) / 100);
+    });
+    // Automatically follows the playlist when a song ends, without retaining closed panels.
+    const musicListener = new AbortController();
+    audio.music.addEventListener(
+      'change',
+      () => {
+        if (!panel.el.isConnected) {
+          musicListener.abort();
+          return;
+        }
+        musicTrack.value = audio.music.currentTrack.id;
+        musicEnabled.checked = audio.music.enabled;
+        musicVolume.value = String(Math.round(audio.music.volume * 100));
+        musicVolumeValue.value = `${musicVolume.value}%`;
+      },
+      { signal: musicListener.signal },
+    );
     setTimeout(() => {
       const langSel = document.getElementById('lang-switch') as HTMLSelectElement | null;
       if (langSel)

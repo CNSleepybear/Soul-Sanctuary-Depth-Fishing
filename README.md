@@ -277,6 +277,9 @@ Soul Sanctuary 是一款**桌面伴侣应用**——设计为在工作间隙随�
 
 ## 🛠️ 技术栈
 
+背景音乐包含 **Abyssal Lamps / bruise of ink / Lingering Threshold** 三首原始 WAV。
+首次点击或按键后开始顺序循环；切换圣地不会打断播放。在设置面板中可以选曲、开关音乐、调节音量，偏好会自动保存。
+
 | 层级 | 技术 |
 |------|------|
 | 框架 | TypeScript + Vite |
@@ -284,7 +287,7 @@ Soul Sanctuary 是一款**桌面伴侣应用**——设计为在工作间隙随�
 | 桌面壳 | Electron（frameless，tray，globalShortcut）|
 | 状态管理 | 事件驱动 EventBus + GameStateManager |
 | 持久化 | localStorage（3 槽位 + 自动保存）|
-| 音频 | Web Audio API（程序化生成，无外部文件）|
+| 音频 | Web Audio API 合成音效与环境音 + 本地 WAV 背景音乐歌单 |
 | 随机数 | Seeded PRNG（mulberry32，可复现 Run）|
 | 样式 | CSS Custom Properties + 像素化放大管线 |
 
@@ -349,13 +352,14 @@ SoulSanctuary/
 │   │   ├── locations/     # 12 个圣地场景构建器 + BaseLocation
 │   │   ├── data/          # 140 条鱼数据、地点元数据、每日系统
 │   │   ├── ui/            # FishingUI, RunUI, Fishpedia, DraggablePanel, SceneUI
-│   │   ├── audio/         # Web Audio API 程序化音频引擎
+│   │   ├── audio/         # Web Audio API 音效引擎 + WAV 背景音乐播放器
 │   │   └── i18n/          # 中英双语支持
 │   └── shared/            # 类型定义、枚举、事件映射、常量
 ├── docs/                  # GDD, TDD, SDD, 架构文档, 审核报告
 ├── scripts/               # 图标生成、数据验证等工具脚本
 ├── tests/                 # Playwright E2E + 单元测试
 ├── assets/                # 图标资源
+├── public/music/          # 三首 WAV 背景音乐（随构建打包）
 └── screenshots/           # 截图展示
 ```
 

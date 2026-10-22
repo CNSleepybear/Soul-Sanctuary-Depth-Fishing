@@ -4,10 +4,10 @@ interface WindowWithWebkitAudio extends Window {
   webkitAudioContext?: typeof AudioContext;
 }
 
-// Core audio engine — Web Audio API procedural synthesis.
-// Zero external audio files. All sounds generated at runtime.
+// Core audio engine — synthesized SFX / ambience plus a bundled music playlist.
 
 import { AmbientType, EventType, MusicVariation, type AudioState } from './types';
+import { MusicPlayer } from './MusicPlayer';
 
 class AudioMixer {
   ambientNodes: AudioScheduledSourceNode[] = [];
@@ -68,9 +68,7 @@ class AudioMixer {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private _mixer: AudioMixer | null = null;
-  private musicNodes: OscillatorNode[] = [];
-  private musicGainNodes: GainNode[] = [];
-  private musicInterval: ReturnType<typeof setInterval> | null = null;
+  readonly music = new MusicPlayer();
 
   // Pending ambient grain timeouts (rain drops, crickets) + mythic catch resume
   private ambientTimeouts: ReturnType<typeof setTimeout>[] = [];
@@ -82,6 +80,12 @@ export class AudioEngine {
     currentAmbientType: null,
     currentMusicVariation: null,
   };
+
+  constructor() {
+    this.music.addEventListener('change', () => {
+      this.state.isPlayingMusic = this.music.isPlaying;
+    });
+  }
 
   /** Lazy init: AudioContext requires user gesture in browsers. */
   private _getCtx(): AudioContext {
@@ -649,55 +653,13 @@ export class AudioEngine {
   // ═══════════════════════════════════════════════
 
   stopMusic(): void {
-    this.musicNodes.forEach((n) => {
-      try {
-        n.stop();
-        n.disconnect();
-      } catch {
-        /* */
-      }
-    });
-    this.musicNodes = [];
-    this.musicGainNodes = [];
-    if (this.musicInterval) {
-      clearInterval(this.musicInterval);
-      this.musicInterval = null;
-    }
+    this.music.stop();
     this.state.isPlayingMusic = false;
+    this.state.currentMusicVariation = null;
   }
 
-  playMusic(variation: MusicVariation): void {
-    this.stopMusic();
-    const ctx = this._getCtx();
-    const masterGain = ctx.createGain();
-    masterGain.gain.value = 0.06;
-    masterGain.connect(ctx.destination);
-
-    // C major melody: C4 D4 E4 G4 A4
-    const melody = [262, 294, 330, 392, 440, 392, 330, 294];
-    const rate =
-      variation === MusicVariation.Calm ? 0.75 : variation === MusicVariation.Tension ? 1.1 : 1.0;
-    let step = 0;
-    const playNote = () => {
-      const freq = melody[step % melody.length] * rate;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.04, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-      osc.connect(gain);
-      gain.connect(masterGain);
-      osc.start();
-      osc.stop(ctx.currentTime + 1.0);
-      this.musicNodes.push(osc);
-      this.musicGainNodes.push(gain);
-      step++;
-    };
-    playNote();
-    const noteDuration = variation === MusicVariation.Celebration ? 400 : 600;
-    this.musicInterval = setInterval(playNote, noteDuration);
-    this.state.isPlayingMusic = true;
+  playMusic(variation: MusicVariation = MusicVariation.Main): void {
+    this.music.play();
     this.state.currentMusicVariation = variation;
   }
 
@@ -708,6 +670,7 @@ export class AudioEngine {
   /** Stop all audio and cleanup. */
   dispose(): void {
     this.stopMusic();
+    this.music.dispose();
     this._clearAmbientTimeouts();
     this._clearMythicResumeTimeout();
     this.mixer.clear();
