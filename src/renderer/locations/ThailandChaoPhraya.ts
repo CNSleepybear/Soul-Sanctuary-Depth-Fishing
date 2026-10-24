@@ -232,50 +232,134 @@ export class ThailandChaoPhraya extends BaseLocation {
       );
     }
 
-    // ── Landmark: white-walled wat with tiered gold roof + chedi spire ──
+    // ── Landmark: a gold-edged wat with layered tiles, chofa and a bell chedi ──
     const watX = 1.9;
     const watZ = -2.5;
-    stage.trim(watX, SURFACE_Y + 0.12, watZ, 2.1, 0.24, 1.9, templeWhite);
-    stage.solid(watX, SURFACE_Y + 0.24 + 0.65, watZ, 1.7, 1.3, 1.5, templeWhite);
-    // gold wall trim
-    stage.trim(watX, SURFACE_Y + 1.0, watZ + 0.78, 1.7, 0.08, 0.06, gold);
-    // shop-front glow + teak door
-    stage.glow(watX, SURFACE_Y + 0.85, watZ + 0.78, 0.7, 0.5, 0.05, glow);
-    stage.trim(watX, SURFACE_Y + 0.5, watZ + 0.8, 0.3, 0.66, 0.06, teak);
-    for (const wx of [-0.5, 0.5]) {
-      stage.trim(watX + wx, SURFACE_Y + 0.9, watZ + 0.79, 0.22, 0.36, 0.05, gold);
-    }
-    // tiered roof: orange eaves with green upper tiers and gold ridges
-    stage.solid(watX, SURFACE_Y + 1.62, watZ, 2.1, 0.2, 1.9, roofOrange);
-    stage.solid(watX, SURFACE_Y + 1.82, watZ, 1.7, 0.2, 1.65, roofOrange);
-    stage.solid(watX, SURFACE_Y + 2.02, watZ, 1.3, 0.2, 1.4, roofGreen);
-    stage.solid(watX, SURFACE_Y + 2.22, watZ, 0.9, 0.2, 1.15, roofOrange);
-    stage.solid(watX, SURFACE_Y + 2.42, watZ, 0.5, 0.2, 0.9, roofGreen);
-    stage.glow(watX, SURFACE_Y + 2.56, watZ, 0.42, 0.1, 0.82, goldBright);
-    stage.trim(watX, SURFACE_Y + 1.72, watZ + 0.98, 2.0, 0.06, 0.06, gold);
-    stage.trim(watX, SURFACE_Y + 1.92, watZ + 0.86, 1.6, 0.06, 0.06, gold);
-    // golden chedi behind the hall
-    const chediX = 2.9;
-    const chediZ = -3.15;
-    stage.solid(chediX, SURFACE_Y + 0.3, chediZ, 1.0, 0.6, 1.0, gold);
-    stage.solid(chediX, SURFACE_Y + 0.75, chediZ, 0.8, 0.5, 0.8, gold);
-    stage.solid(chediX, SURFACE_Y + 1.15, chediZ, 0.62, 0.5, 0.62, gold);
-    stage.solid(chediX, SURFACE_Y + 1.52, chediZ, 0.46, 0.44, 0.46, gold);
-    stage.solid(chediX, SURFACE_Y + 1.86, chediZ, 0.3, 0.4, 0.3, goldBright);
-    stage.glow(chediX, SURFACE_Y + 2.16, chediZ, 0.14, 0.5, 0.14, glow);
-    stage.glow(chediX, SURFACE_Y + 2.45, chediZ, 0.3, 0.07, 0.3, goldBright);
-    // little gold finial rings
+    stage.trim(watX, SURFACE_Y + 0.09, watZ, 2.5, 0.18, 2.15, shade(templeWhite, 0.86));
+    stage.trim(watX, SURFACE_Y + 0.21, watZ, 2.25, 0.1, 1.95, templeWhite);
     for (let i = 0; i < 3; i++) {
       stage.trim(
-        chediX,
-        SURFACE_Y + 2.55 + i * 0.14,
-        chediZ,
-        0.22 - i * 0.05,
-        0.05,
-        0.22 - i * 0.05,
-        gold,
+        watX,
+        SURFACE_Y + 0.06 + i * 0.07,
+        watZ + 1.22 - i * 0.16,
+        1.0 - i * 0.12,
+        0.08,
+        0.34,
+        templeWhite,
       );
     }
+    stage.solid(watX, SURFACE_Y + 0.89, watZ, 1.7, 1.3, 1.5, templeWhite);
+    for (const px of [-0.78, -0.4, 0.4, 0.78]) {
+      stage.trim(watX + px, SURFACE_Y + 0.9, watZ + 0.79, 0.09, 1.26, 0.09, gold);
+      stage.trim(watX + px, SURFACE_Y + 0.3, watZ + 0.8, 0.16, 0.12, 0.14, goldBright);
+    }
+    stage.trim(watX, SURFACE_Y + 1.42, watZ + 0.8, 1.82, 0.1, 0.08, gold);
+    stage.trim(watX, SURFACE_Y + 0.35, watZ + 0.8, 1.82, 0.1, 0.08, gold);
+    stage.glow(watX, SURFACE_Y + 0.84, watZ + 0.79, 0.56, 0.74, 0.05, shade(glow, 0.72));
+    for (const dx of [-0.17, 0.17]) {
+      stage.solid(watX + dx, SURFACE_Y + 0.76, watZ + 0.835, 0.29, 0.9, 0.06, teak);
+      stage.trim(watX + dx, SURFACE_Y + 0.76, watZ + 0.875, 0.03, 0.82, 0.03, gold);
+    }
+    for (const wx of [-0.56, 0.56]) {
+      stage.solid(watX + wx, SURFACE_Y + 0.88, watZ + 0.805, 0.3, 0.54, 0.06, roofGreen);
+      stage.trim(watX + wx, SURFACE_Y + 0.88, watZ + 0.85, 0.05, 0.48, 0.04, goldBright);
+      stage.trim(watX + wx, SURFACE_Y + 0.88, watZ + 0.85, 0.26, 0.05, 0.04, goldBright);
+      for (const side of [-1, 1]) {
+        stage.trim(watX + wx + side * 0.19, SURFACE_Y + 0.88, watZ + 0.84, 0.06, 0.65, 0.06, gold);
+      }
+      stage.trim(watX + wx, SURFACE_Y + 1.21, watZ + 0.84, 0.44, 0.07, 0.06, gold);
+    }
+    const roofTiers = [
+      { y: 1.6, w: 2.35, d: 2.02, color: roofOrange },
+      { y: 1.81, w: 1.95, d: 1.78, color: roofOrange },
+      { y: 2.02, w: 1.52, d: 1.5, color: roofGreen },
+      { y: 2.23, w: 1.08, d: 1.22, color: roofOrange },
+      { y: 2.44, w: 0.58, d: 0.96, color: roofGreen },
+    ];
+    roofTiers.forEach((tier, i) => {
+      stage.solid(watX, SURFACE_Y + tier.y, watZ, tier.w, 0.2, tier.d, tier.color);
+      stage.trim(
+        watX,
+        SURFACE_Y + tier.y - 0.07,
+        watZ + tier.d / 2,
+        tier.w + 0.08,
+        0.07,
+        0.08,
+        gold,
+      );
+      for (const side of [-1, 1]) {
+        stage.trim(
+          watX + side * (tier.w / 2 + 0.05),
+          SURFACE_Y + tier.y + 0.1,
+          watZ + tier.d / 2 - 0.08,
+          0.1,
+          0.28 + i * 0.025,
+          0.1,
+          goldBright,
+        );
+      }
+    });
+    stage.glow(watX, SURFACE_Y + 2.59, watZ, 0.16, 0.13, 1.04, goldBright);
+    for (const end of [-1, 1]) {
+      stage.trim(watX, SURFACE_Y + 2.79, watZ + end * 0.54, 0.1, 0.45, 0.1, goldBright);
+      stage.trim(watX, SURFACE_Y + 3.0, watZ + end * 0.61, 0.09, 0.09, 0.24, goldBright);
+    }
+    for (let i = 0; i < 7; i++) {
+      stage.trim(
+        watX - 0.9 + i * 0.3,
+        SURFACE_Y + 1.71,
+        watZ + 0.93,
+        0.045,
+        0.08,
+        0.22,
+        shade(gold, 0.82),
+      );
+    }
+
+    const chediX = 3.15;
+    const chediZ = -3.35;
+    for (let i = 0; i < 3; i++) {
+      stage.solid(
+        chediX,
+        SURFACE_Y + 0.1 + i * 0.16,
+        chediZ,
+        1.2 - i * 0.16,
+        0.18,
+        1.2 - i * 0.16,
+        i === 1 ? goldBright : gold,
+      );
+    }
+    const bellTiers = [
+      { y: 0.66, w: 0.84, h: 0.3 },
+      { y: 0.91, w: 0.72, h: 0.26 },
+      { y: 1.14, w: 0.58, h: 0.24 },
+      { y: 1.35, w: 0.44, h: 0.22 },
+      { y: 1.55, w: 0.32, h: 0.22 },
+    ];
+    bellTiers.forEach((tier, i) => {
+      stage.solid(
+        chediX,
+        SURFACE_Y + tier.y,
+        chediZ,
+        tier.w,
+        tier.h,
+        tier.w,
+        i % 2 === 0 ? gold : goldBright,
+      );
+    });
+    stage.glow(chediX, SURFACE_Y + 1.88, chediZ, 0.14, 0.54, 0.14, glow);
+    for (let i = 0; i < 6; i++) {
+      stage.trim(
+        chediX,
+        SURFACE_Y + 1.68 + i * 0.14,
+        chediZ,
+        0.34 - i * 0.042,
+        0.045,
+        0.34 - i * 0.042,
+        goldBright,
+      );
+    }
+    stage.glow(chediX, SURFACE_Y + 2.52, chediZ, 0.07, 0.28, 0.07, goldBright);
 
     // ── Secondary: seated golden Buddha on a lotus pedestal ──
     const buddhaX = -0.4;
@@ -319,7 +403,7 @@ export class ThailandChaoPhraya extends BaseLocation {
       }
     }
 
-    // ── Secondary: two long-tail boats on the river ──
+    // ── Long-tail boats: tapered hulls, raised prows, canopy and exposed motor ──
     const buildLongTail = (angle: number, radius: number, seed: number): void => {
       const boatRng = createRng(seed);
       const cells: InstancedVoxel[] = [];
@@ -334,15 +418,40 @@ export class ThailandChaoPhraya extends BaseLocation {
       ) => {
         cells.push({ x, y, z, w, h, d, color });
       };
-      push(0, 0.1, 0, 1.8, 0.16, 0.34, teak);
-      push(0, 0.22, 0, 1.4, 0.1, 0.28, shade(teak, 1.2));
-      push(0.95, 0.5, 0, 0.08, 0.8, 0.08, teak);
-      push(0.75, 0.9, 0, 0.5, 0.06, 0.06, teak);
-      push(-0.9, 0.42, 0, 0.22, 0.5, 0.2, roofOrange);
-      // driver silhouette
-      push(-0.4, 0.5, 0, 0.16, 0.34, 0.16, templeWhite);
-      push(-0.4, 0.74, 0, 0.14, 0.14, 0.14, mixHex(key, 0x8a6a50, 0.5));
-      push(-0.4, 0.84, 0, 0.28, 0.06, 0.24, teak);
+      const painted = boatRng.chance(0.5) ? roofOrange : roofGreen;
+      push(-0.05, 0.08, 0, 2.15, 0.14, 0.3, shade(teak, 0.72));
+      push(-0.08, 0.18, 0, 1.9, 0.12, 0.42, painted);
+      push(0.9, 0.26, 0, 0.42, 0.14, 0.32, painted);
+      push(1.12, 0.39, 0, 0.22, 0.16, 0.22, gold);
+      push(1.22, 0.56, 0, 0.1, 0.26, 0.12, goldBright);
+      push(-1.08, 0.19, 0, 0.24, 0.14, 0.36, shade(teak, 1.15));
+      for (const side of [-1, 1]) {
+        push(-0.05, 0.31, side * 0.22, 1.95, 0.08, 0.06, shade(teak, 1.35));
+        for (const x of [-0.58, 0.48]) push(x, 0.57, side * 0.2, 0.055, 0.55, 0.055, teak);
+      }
+      for (const x of [-0.55, 0.05, 0.6]) push(x, 0.3, 0, 0.1, 0.08, 0.4, shade(teak, 1.25));
+      push(-0.03, 0.86, 0, 1.35, 0.1, 0.58, painted);
+      push(-0.03, 0.93, 0, 1.12, 0.06, 0.48, mixHex(painted, key, 0.16));
+      push(-0.84, 0.43, 0, 0.26, 0.3, 0.28, shadow);
+      push(-1.28, 0.3, 0, 0.72, 0.065, 0.065, mixHex(shadow, 0x899099, 0.55));
+      push(-1.62, 0.22, 0, 0.07, 0.25, 0.22, shade(teak, 0.8));
+      push(-0.73, 0.58, 0, 0.16, 0.32, 0.16, templeWhite);
+      push(-0.73, 0.81, 0, 0.14, 0.14, 0.14, mixHex(key, 0x8a6a50, 0.5));
+      push(-0.73, 0.91, 0, 0.28, 0.06, 0.24, teak);
+      push(0.35, 0.49, 0, 0.15, 0.24, 0.15, mixHex(lotusPink, templeWhite, 0.45));
+      push(0.35, 0.67, 0, 0.13, 0.13, 0.13, mixHex(key, 0x8a6a50, 0.5));
+      for (let i = 0; i < 4; i++) {
+        push(
+          1.18,
+          0.48 - i * 0.08,
+          (i % 2 === 0 ? -1 : 1) * 0.08,
+          0.08,
+          0.08,
+          0.08,
+          i % 2 === 0 ? lotusPink : goldBright,
+        );
+      }
+      push(0.73, 0.52, 0, 0.14, 0.2, 0.14, glow);
       const boat = buildInstancedVoxels(cells, { castShadow: true, receiveShadow: true });
       boat.position.set(Math.cos(angle) * radius, -1.9, Math.sin(angle) * radius);
       boat.rotation.y = boatRng.nextFloat(0, TAU);
@@ -437,16 +546,16 @@ export class ThailandChaoPhraya extends BaseLocation {
     const veil = art.veil ?? 0x2a1f2e;
     const rng = createRng(hashSeed('thailand:atmosphere'));
 
-    // 1) Sky lanterns rising over the river.
+    // Paper bodies, stepped caps and bright bases remain perfectly paired while rising.
     const lanterns: MoteSpec[] = [];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 18; i++) {
       lanterns.push({
-        x: rng.nextFloat(-4.5, 4.5),
-        y: SURFACE_Y + 0.8,
-        z: rng.nextFloat(-4, 4.5),
-        w: rng.nextFloat(0.16, 0.24),
-        h: rng.nextFloat(0.2, 0.3),
-        d: rng.nextFloat(0.16, 0.24),
+        x: rng.nextFloat(-4.8, 4.2),
+        y: SURFACE_Y + 0.65,
+        z: rng.nextFloat(-4.4, 2.2),
+        w: rng.nextFloat(0.18, 0.26),
+        h: rng.nextFloat(0.28, 0.4),
+        d: rng.nextFloat(0.18, 0.26),
         color: rng.chance(0.35) ? mixHex(glow, 0xffe29a, 0.4) : glow,
         mode: 'rise',
         speed: rng.nextFloat(0.1, 0.22),
@@ -455,21 +564,39 @@ export class ThailandChaoPhraya extends BaseLocation {
         span: 7.5,
       });
     }
-    this.motes.push(new MoteField(lanterns, { additive: true, opacity: 0.85 }));
+    const lanternCaps = lanterns.map((mote) => ({
+      ...mote,
+      y: mote.y + mote.h * 0.52,
+      w: mote.w * 0.72,
+      h: 0.07,
+      d: mote.d * 0.72,
+      color: mixHex(mote.color, key, 0.35),
+    }));
+    const lanternFlames = lanterns.map((mote) => ({
+      ...mote,
+      y: mote.y - mote.h * 0.53,
+      w: 0.07,
+      h: 0.09,
+      d: 0.07,
+      color: 0xffe5a0,
+    }));
+    this.motes.push(new MoteField(lanterns, { additive: true, opacity: 0.72 }));
+    this.motes.push(new MoteField(lanternCaps, { additive: true, opacity: 0.82 }));
+    this.motes.push(new MoteField(lanternFlames, { additive: true, opacity: 0.95 }));
 
-    // 2) Krathongs drifting down the river (warm candle reflections).
+    // Each krathong has a banana-leaf raft, folded petals and a separate candle.
     const krathongs: MoteSpec[] = [];
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < 18; i++) {
       const angle = rng.nextFloat(0.02, 1.3);
       const radius = rng.nextFloat(6.6, 7.6);
       krathongs.push({
         x: Math.cos(angle) * radius,
-        y: -1.84,
+        y: -1.86,
         z: Math.sin(angle) * radius,
-        w: 0.22,
-        h: 0.08,
-        d: 0.22,
-        color: mixHex(glow, accent, 0.4),
+        w: 0.34,
+        h: 0.055,
+        d: 0.28,
+        color: mixHex(accent, 0x397046, 0.72),
         mode: 'drift',
         speed: 0.14,
         amp: 0.12,
@@ -477,7 +604,25 @@ export class ThailandChaoPhraya extends BaseLocation {
         span: 1.0,
       });
     }
-    this.motes.push(new MoteField(krathongs, { additive: true, opacity: 0.6 }));
+    const krathongPetals = krathongs.map((mote, i) => ({
+      ...mote,
+      y: mote.y + 0.075,
+      w: 0.22,
+      h: 0.1,
+      d: 0.2,
+      color: i % 3 === 0 ? 0xf2a0b5 : mixHex(glow, 0xf3d6a0, 0.5),
+    }));
+    const krathongCandles = krathongs.map((mote) => ({
+      ...mote,
+      y: mote.y + 0.19,
+      w: 0.055,
+      h: 0.18,
+      d: 0.055,
+      color: 0xffd77a,
+    }));
+    this.motes.push(new MoteField(krathongs, { opacity: 0.95 }));
+    this.motes.push(new MoteField(krathongPetals, { opacity: 0.95 }));
+    this.motes.push(new MoteField(krathongCandles, { additive: true, opacity: 0.9 }));
 
     // 3) Fireflies around the wat and the spirit house.
     const fireflies: MoteSpec[] = [];

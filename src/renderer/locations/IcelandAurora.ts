@@ -212,114 +212,259 @@ export class IcelandAurora extends BaseLocation {
     const stage = new VoxelStage();
     const rng = createRng(hashSeed('iceland:aurora'));
 
-    // ── Snow / moss ground patches ──
-    for (let i = 0; i < 22; i++) {
+    // ── Wind-combed tundra: clustered moss, snow crust and cotton grass ──
+    for (let i = 0; i < 38; i++) {
       const angle = rng.nextFloat(0, TAU);
-      const radius = rng.nextFloat(1.6, islandRadius - 0.6);
-      stage.trim(
-        Math.cos(angle) * radius,
-        SURFACE_Y + 0.05,
-        Math.sin(angle) * radius,
-        rng.nextFloat(0.4, 0.85),
-        0.1,
-        rng.nextFloat(0.35, 0.7),
-        rng.chance(0.6) ? snow : snowShade,
-        rng.nextFloat(-0.4, 0.4),
-      );
+      const radius = rng.nextFloat(2.2, islandRadius - 0.55);
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      const w = rng.nextFloat(0.35, 0.9);
+      const d = rng.nextFloat(0.3, 0.7);
+      const patch = rng.chance(0.48)
+        ? mixHex(turf, veil, 0.25)
+        : rng.chance(0.55)
+          ? snow
+          : snowShade;
+      stage.trim(x, SURFACE_Y + 0.045, z, w, 0.09, d, patch, rng.nextFloat(-0.45, 0.45));
+      if (i % 3 === 0) {
+        stage.trim(
+          x - 0.08,
+          SURFACE_Y + 0.12,
+          z,
+          w * 0.55,
+          0.08,
+          d * 0.6,
+          mixHex(patch, key, 0.12),
+        );
+      }
+    }
+    for (let i = 0; i < 18; i++) {
+      const x = -4.7 + rng.nextFloat(-0.45, 0.7);
+      const z = -0.2 + rng.nextFloat(-1.0, 2.2);
+      const h = rng.nextFloat(0.22, 0.48);
+      stage.trim(x, SURFACE_Y + h / 2, z, 0.045, h, 0.045, mixHex(turf, key, 0.25));
+      stage.trim(x, SURFACE_Y + h, z, 0.11, 0.1, 0.1, snow);
     }
 
-    // ── Landmark: black church with white window frames + turf roof strip ──
+    // ── Landmark: tar-black church, white joinery and a turf-lined churchyard ──
     const churchX = -2.6;
     const churchZ = -1.9;
-    stage.trim(churchX, SURFACE_Y + 0.1, churchZ, 2.0, 0.2, 3.0, basaltDark);
-    stage.solid(churchX, SURFACE_Y + 0.2 + 0.95, churchZ, 1.5, 1.9, 2.6, churchBlack);
-    // stepped steep roof
-    stage.solid(churchX, SURFACE_Y + 2.2, churchZ, 1.62, 0.22, 2.72, churchBlack);
-    stage.solid(churchX, SURFACE_Y + 2.42, churchZ, 1.32, 0.22, 2.55, shade(churchBlack, 1.12));
-    stage.solid(churchX, SURFACE_Y + 2.64, churchZ, 1.0, 0.22, 2.3, churchBlack);
-    stage.solid(churchX, SURFACE_Y + 2.86, churchZ, 0.66, 0.22, 1.95, shade(churchBlack, 1.12));
-    stage.solid(churchX, SURFACE_Y + 3.08, churchZ, 0.34, 0.22, 1.5, churchBlack);
-    // turf strip along the roof eaves
-    stage.trim(churchX, SURFACE_Y + 2.08, churchZ, 1.7, 0.08, 2.85, turf);
-    // tower + white cross
-    stage.solid(churchX, SURFACE_Y + 0.2 + 1.5, churchZ + 1.65, 0.8, 3.0, 0.8, churchBlack);
+    stage.trim(churchX, SURFACE_Y + 0.09, churchZ, 2.05, 0.18, 3.05, basaltDark);
+    for (let i = 0; i < 7; i++) {
+      stage.trim(
+        churchX - 0.82 + i * 0.27,
+        SURFACE_Y + 0.19,
+        churchZ + 1.48,
+        0.23,
+        0.16,
+        0.18,
+        i % 2 === 0 ? basalt : basaltDark,
+      );
+    }
+    stage.solid(churchX, SURFACE_Y + 1.15, churchZ, 1.5, 1.9, 2.6, churchBlack);
+    for (let i = 0; i < 7; i++) {
+      const x = churchX - 0.66 + i * 0.22;
+      stage.trim(
+        x,
+        SURFACE_Y + 1.15,
+        churchZ + 1.312,
+        0.035,
+        1.82,
+        0.035,
+        shade(churchBlack, 1.35),
+      );
+    }
+    for (const side of [-1, 1]) {
+      stage.trim(
+        churchX + side * 0.758,
+        SURFACE_Y + 1.12,
+        churchZ,
+        0.035,
+        1.75,
+        2.5,
+        shade(churchBlack, side > 0 ? 1.22 : 0.78),
+      );
+      stage.solid(
+        churchX + side * 0.68,
+        SURFACE_Y + 0.36,
+        churchZ - 0.8,
+        0.18,
+        0.55,
+        0.32,
+        churchBlack,
+      );
+    }
+    const roofTiers = [
+      { y: 2.2, w: 1.68, d: 2.78 },
+      { y: 2.42, w: 1.34, d: 2.62 },
+      { y: 2.64, w: 1.0, d: 2.42 },
+      { y: 2.86, w: 0.66, d: 2.16 },
+      { y: 3.08, w: 0.34, d: 1.78 },
+    ];
+    roofTiers.forEach((tier, i) => {
+      stage.solid(
+        churchX,
+        SURFACE_Y + tier.y,
+        churchZ,
+        tier.w,
+        0.22,
+        tier.d,
+        i % 2 === 0 ? churchBlack : shade(churchBlack, 1.12),
+      );
+    });
+    stage.trim(churchX, SURFACE_Y + 2.08, churchZ, 1.76, 0.08, 2.88, turf);
+    stage.trim(churchX, SURFACE_Y + 3.22, churchZ - 0.12, 0.14, 0.12, 1.7, shade(churchBlack, 1.4));
+    stage.trim(churchX - 0.36, SURFACE_Y + 2.96, churchZ - 0.28, 0.24, 0.07, 1.25, snowShade);
+
+    const towerZ = churchZ + 1.65;
+    stage.solid(churchX, SURFACE_Y + 1.7, towerZ, 0.8, 3.0, 0.8, churchBlack);
+    stage.trim(churchX, SURFACE_Y + 2.65, towerZ + 0.41, 0.66, 0.08, 0.05, whiteTrim);
+    for (const lx of [-0.19, 0, 0.19]) {
+      stage.trim(churchX + lx, SURFACE_Y + 2.92, towerZ + 0.412, 0.09, 0.38, 0.04, veil);
+    }
+    stage.solid(churchX, SURFACE_Y + 3.3, towerZ, 0.98, 0.16, 0.98, shade(churchBlack, 1.12));
+    stage.solid(churchX, SURFACE_Y + 3.49, towerZ, 0.64, 0.22, 0.64, churchBlack);
+    stage.solid(churchX, SURFACE_Y + 3.67, towerZ, 0.34, 0.16, 0.34, shade(churchBlack, 1.18));
+    stage.glow(churchX, SURFACE_Y + 3.94, towerZ, 0.07, 0.5, 0.07, whiteTrim);
+    stage.glow(churchX, SURFACE_Y + 4.02, towerZ, 0.34, 0.07, 0.07, whiteTrim);
+
+    for (const wx of [-0.4, 0.4]) {
+      stage.glow(churchX + wx, SURFACE_Y + 1.4, churchZ + 1.326, 0.28, 0.46, 0.045, ember);
+      for (const side of [-1, 1]) {
+        stage.trim(
+          churchX + wx + side * 0.2,
+          SURFACE_Y + 1.4,
+          churchZ + 1.35,
+          0.06,
+          0.62,
+          0.06,
+          whiteTrim,
+        );
+      }
+      for (const y of [1.09, 1.71]) {
+        stage.trim(churchX + wx, SURFACE_Y + y, churchZ + 1.35, 0.46, 0.06, 0.06, whiteTrim);
+      }
+      stage.trim(churchX + wx, SURFACE_Y + 1.4, churchZ + 1.36, 0.045, 0.5, 0.04, whiteTrim);
+      stage.trim(churchX + wx, SURFACE_Y + 1.4, churchZ + 1.36, 0.32, 0.045, 0.04, whiteTrim);
+      stage.trim(churchX + wx, SURFACE_Y + 1.04, churchZ + 1.39, 0.54, 0.08, 0.16, snowShade);
+    }
+    stage.trim(churchX, SURFACE_Y + 0.72, churchZ + 1.35, 0.48, 1.08, 0.07, whiteTrim);
     stage.solid(
       churchX,
-      SURFACE_Y + 3.3,
-      churchZ + 1.65,
-      0.95,
-      0.16,
-      0.95,
-      shade(churchBlack, 1.12),
+      SURFACE_Y + 0.7,
+      churchZ + 1.397,
+      0.34,
+      0.92,
+      0.05,
+      shade(churchBlack, 0.7),
     );
-    stage.trim(churchX, SURFACE_Y + 3.5, churchZ + 1.65, 0.6, 0.22, 0.6, churchBlack);
-    stage.glow(churchX, SURFACE_Y + 3.82, churchZ + 1.65, 0.07, 0.5, 0.07, whiteTrim);
-    stage.glow(churchX, SURFACE_Y + 3.9, churchZ + 1.65, 0.34, 0.07, 0.07, whiteTrim);
-    // white window frames + warm windows on the camera-facing side (+z)
-    for (const wx of [-0.38, 0.38]) {
-      stage.glow(churchX + wx, SURFACE_Y + 1.35, churchZ + 1.32, 0.3, 0.5, 0.06, ember);
-      stage.trim(
-        churchX + wx - 0.22,
+    stage.glow(churchX + 0.1, SURFACE_Y + 0.7, churchZ + 1.43, 0.045, 0.045, 0.035, ember);
+    for (const wz of [-0.65, 0.25]) {
+      stage.glow(
+        churchX + 0.766,
         SURFACE_Y + 1.35,
-        churchZ + 1.34,
-        0.06,
-        0.64,
-        0.06,
-        whiteTrim,
+        churchZ + wz,
+        0.04,
+        0.42,
+        0.34,
+        shade(ember, 0.8),
       );
-      stage.trim(
-        churchX + wx + 0.22,
-        SURFACE_Y + 1.35,
-        churchZ + 1.34,
-        0.06,
-        0.64,
-        0.06,
-        whiteTrim,
-      );
-      stage.trim(churchX + wx, SURFACE_Y + 1.66, churchZ + 1.34, 0.5, 0.06, 0.06, whiteTrim);
-      stage.trim(churchX + wx, SURFACE_Y + 1.04, churchZ + 1.34, 0.5, 0.06, 0.06, whiteTrim);
+      stage.trim(churchX + 0.79, SURFACE_Y + 1.35, churchZ + wz, 0.05, 0.56, 0.46, whiteTrim);
+      stage.glow(churchX + 0.82, SURFACE_Y + 1.35, churchZ + wz, 0.035, 0.38, 0.28, ember);
     }
-    // white door frame
-    stage.trim(churchX, SURFACE_Y + 0.66, churchZ + 1.34, 0.44, 1.0, 0.06, whiteTrim);
-    stage.glow(churchX, SURFACE_Y + 0.62, churchZ + 1.36, 0.3, 0.8, 0.05, shade(ember, 0.8));
+    for (let i = 0; i < 7; i++) {
+      stage.trim(
+        churchX + Math.sin(i * 0.55) * 0.28,
+        SURFACE_Y + 0.055,
+        churchZ + 2.15 + i * 0.3,
+        0.5,
+        0.08,
+        0.24,
+        i % 2 === 0 ? basalt : snowShade,
+        Math.sin(i) * 0.18,
+      );
+    }
+    for (let i = 0; i < 8; i++) {
+      const x = churchX - 1.55 + i * 0.44;
+      stage.solid(x, SURFACE_Y + 0.31, churchZ - 1.75, 0.09, 0.62, 0.09, churchBlack);
+      if (i < 7)
+        stage.trim(
+          x + 0.22,
+          SURFACE_Y + 0.4,
+          churchZ - 1.75,
+          0.44,
+          0.08,
+          0.08,
+          shade(churchBlack, 1.3),
+        );
+    }
 
-    // ── Secondary: turf house with a grass roof ──
+    // ── Secondary: a lived-in turf house with deep eaves and a chimney ──
     const turfX = 2.1;
     const turfZ = -2.3;
     stage.solid(turfX, SURFACE_Y + 0.55, turfZ, 1.7, 1.1, 1.5, churchBlack);
-    stage.solid(turfX, SURFACE_Y + 1.2, turfZ, 2.0, 0.36, 1.8, turf);
-    stage.trim(turfX, SURFACE_Y + 1.42, turfZ, 1.7, 0.1, 1.5, mixHex(turf, snow, 0.3));
-    stage.glow(turfX, SURFACE_Y + 0.62, turfZ + 0.78, 0.32, 0.3, 0.06, ember);
+    stage.solid(turfX, SURFACE_Y + 1.18, turfZ, 2.0, 0.3, 1.82, shade(turf, 0.8));
+    stage.solid(turfX, SURFACE_Y + 1.38, turfZ, 1.7, 0.18, 1.56, turf);
+    stage.trim(turfX, SURFACE_Y + 1.5, turfZ, 1.38, 0.08, 1.28, mixHex(turf, snow, 0.35));
+    stage.trim(turfX, SURFACE_Y + 0.48, turfZ + 0.78, 0.36, 0.78, 0.07, shade(churchBlack, 0.75));
+    stage.glow(turfX - 0.5, SURFACE_Y + 0.65, turfZ + 0.78, 0.3, 0.3, 0.06, ember);
+    stage.trim(turfX - 0.5, SURFACE_Y + 0.65, turfZ + 0.82, 0.04, 0.34, 0.04, whiteTrim);
+    stage.solid(turfX + 0.52, SURFACE_Y + 1.7, turfZ - 0.35, 0.28, 0.55, 0.3, basaltDark);
+    stage.trim(turfX + 0.52, SURFACE_Y + 2.0, turfZ - 0.35, 0.34, 0.08, 0.36, snowShade);
 
-    // ── Secondary: basalt column cluster ──
+    // ── Secondary: fractured basalt organ pipes ──
     const basaltColumn = (x: number, z: number, h: number, w: number): void => {
       stage.solid(x, SURFACE_Y + h / 2, z, w, h, w, basalt);
       stage.trim(x, SURFACE_Y + h + 0.03, z, w * 0.9, 0.08, w * 0.9, snow);
+      stage.trim(x + w * 0.51, SURFACE_Y + h * 0.52, z, 0.035, h * 0.82, w * 0.7, basaltDark);
     };
     basaltColumn(3.4, -0.9, 1.9, 0.5);
     basaltColumn(3.9, -0.7, 1.4, 0.42);
     basaltColumn(3.1, -0.5, 1.1, 0.38);
     basaltColumn(3.7, -0.2, 0.8, 0.34);
+    basaltColumn(4.15, -1.15, 1.05, 0.3);
 
-    // ── Secondary: geothermal vent with a stone ring ──
+    // ── Geothermal terraces: mineral rims, turquoise water and two steam vents ──
     const ventX = 1.0;
     const ventZ = 0.9;
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * TAU;
+    const mineral = mixHex(key, 0xc6b78c, 0.55);
+    stage.trim(ventX, SURFACE_Y + 0.035, ventZ, 1.65, 0.07, 1.35, mixHex(mineral, veil, 0.25));
+    stage.trim(ventX - 0.12, SURFACE_Y + 0.09, ventZ, 1.25, 0.08, 1.0, mineral);
+    stage.trim(
+      ventX - 0.18,
+      SURFACE_Y + 0.14,
+      ventZ,
+      0.86,
+      0.06,
+      0.66,
+      mixHex(accent, 0x9fd8d0, 0.65),
+    );
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU;
       stage.trim(
-        ventX + Math.cos(a) * 0.5,
-        SURFACE_Y + 0.12,
-        ventZ + Math.sin(a) * 0.5,
-        0.3,
-        0.24,
-        0.3,
-        basaltDark,
+        ventX + Math.cos(a) * 0.53,
+        SURFACE_Y + 0.17,
+        ventZ + Math.sin(a) * 0.43,
+        0.22,
+        0.2,
+        0.2,
+        i % 3 === 0 ? mineral : basaltDark,
         a,
       );
     }
-    stage.glow(ventX, SURFACE_Y + 0.14, ventZ, 0.34, 0.1, 0.34, mixHex(accent, 0xffffff, 0.3));
+    stage.glow(
+      ventX - 0.15,
+      SURFACE_Y + 0.18,
+      ventZ,
+      0.38,
+      0.045,
+      0.3,
+      mixHex(accent, 0xffffff, 0.45),
+    );
+    stage.trim(2.0, SURFACE_Y + 0.07, 0.1, 0.72, 0.1, 0.58, mineral);
+    stage.glow(2.0, SURFACE_Y + 0.13, 0.1, 0.22, 0.05, 0.22, mixHex(accent, key, 0.5));
 
-    // ── Foreground frame: basalt boulders + snow drift (camera side) ──
+    // ── Foreground frame kept to the far right, clear of the fishing approach ──
     const rockX = 4.7;
     const rockZ = 2.3;
     stage.solid(rockX, SURFACE_Y + 0.35, rockZ, 0.9, 0.7, 0.7, basalt);
@@ -327,7 +472,6 @@ export class IcelandAurora extends BaseLocation {
     stage.solid(rockX - 0.6, SURFACE_Y + 0.2, rockZ - 0.3, 0.5, 0.4, 0.5, basalt);
     stage.trim(rockX, SURFACE_Y + 0.72, rockZ, 0.86, 0.1, 0.66, snow);
     stage.trim(rockX + 0.7, SURFACE_Y + 0.48, rockZ + 0.4, 0.56, 0.08, 0.5, snowShade);
-    // drifts
     for (let i = 0; i < 5; i++) {
       stage.trim(
         3.4 + rng.nextFloat(0, 2.2),
@@ -393,46 +537,53 @@ export class IcelandAurora extends BaseLocation {
     const veil = art.veil ?? 0x0e1a22;
     const rng = createRng(hashSeed('iceland:atmosphere'));
 
-    // 1) Aurora curtains: layered additive bands, green core + cyan edge.
+    // Three depth-separated ribbons share one draw call; narrow cells make a
+    // continuous folded silhouette instead of a scatter of glowing rectangles.
     const aurora: MoteSpec[] = [];
-    const bandColors = [accent, fill, glow, mixHex(accent, key, 0.45)];
-    for (let i = 0; i < 9; i++) {
-      aurora.push({
-        x: rng.nextFloat(-5.5, 5.5),
-        y: rng.nextFloat(SURFACE_Y + 4.6, SURFACE_Y + 7.2),
-        z: rng.nextFloat(-4.5, 1.5),
-        w: rng.nextFloat(1.4, 2.8),
-        h: rng.nextFloat(1.2, 3.2),
-        d: 0.06,
-        color: bandColors[i % bandColors.length],
-        mode: 'orbit',
-        speed: rng.nextFloat(0.03, 0.08),
-        amp: rng.nextFloat(0.3, 0.9),
-        phase: rng.next(),
-        span: 1,
-      });
+    const bandColors = [accent, mixHex(fill, key, 0.3), glow];
+    for (let layer = 0; layer < 3; layer++) {
+      for (let i = 0; i < 19; i++) {
+        const t = i / 18;
+        const x = -6.3 + t * 12.6;
+        const wave = Math.sin(t * Math.PI * 2.2 + layer * 0.85);
+        aurora.push({
+          x,
+          y: SURFACE_Y + 5.2 + layer * 0.48 + wave * 0.42,
+          z: -5.1 + layer * 1.05 + Math.cos(t * Math.PI * 2 + layer) * 0.35,
+          w: 0.76,
+          h: 1.1 + (Math.sin(t * Math.PI * 3.4 + layer * 0.6) * 0.5 + 0.5) * 1.65,
+          d: 0.045,
+          color: mixHex(bandColors[layer], key, i % 5 === 0 ? 0.22 : 0.04),
+          mode: 'orbit',
+          speed: 0.07 + layer * 0.018,
+          amp: 0.12 + layer * 0.035,
+          phase: t * 0.16 + layer * 0.11,
+          span: 1,
+        });
+      }
     }
-    this.motes.push(new MoteField(aurora, { additive: true, opacity: 0.26 }));
+    this.motes.push(new MoteField(aurora, { additive: true, opacity: 0.2 }));
 
-    // 2) Geothermal steam rising from the vent.
+    // Steam expands as it rises from both mineral pools, with a low wind-blown veil.
     const steam: MoteSpec[] = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 24; i++) {
+      const secondary = i >= 16;
       steam.push({
-        x: 1.0 + rng.nextFloat(-0.25, 0.25),
+        x: (secondary ? 2.0 : 0.85) + rng.nextFloat(-0.18, 0.18),
         y: SURFACE_Y + 0.2,
-        z: 0.9 + rng.nextFloat(-0.25, 0.25),
-        w: rng.nextFloat(0.2, 0.4),
-        h: rng.nextFloat(0.2, 0.4),
-        d: rng.nextFloat(0.2, 0.4),
-        color: mixHex(0xffffff, veil, 0.25),
+        z: (secondary ? 0.1 : 0.9) + rng.nextFloat(-0.16, 0.16),
+        w: rng.nextFloat(0.18, 0.42),
+        h: rng.nextFloat(0.18, 0.38),
+        d: rng.nextFloat(0.18, 0.4),
+        color: mixHex(0xffffff, veil, 0.2),
         mode: 'rise',
-        speed: rng.nextFloat(0.16, 0.3),
-        amp: rng.nextFloat(0.1, 0.35),
+        speed: rng.nextFloat(0.14, 0.28),
+        amp: rng.nextFloat(0.12, 0.38),
         phase: rng.next(),
-        span: 3.2,
+        span: secondary ? 2.3 : 3.2,
       });
     }
-    this.motes.push(new MoteField(steam, { opacity: 0.3 }));
+    this.motes.push(new MoteField(steam, { opacity: 0.26 }));
 
     // 3) Snow spindrift skimming the snowfields.
     const drift: MoteSpec[] = [];

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="screenshots/art-v3/japan-preview.png" alt="京都落樱：浮岛、木栈钓位与局部跌水，实际游戏截图" width="640">
+  <img src="screenshots/art-v4/japan-preview.png" alt="京都落樱：精细鸟居、樱花与层叠浮岛，实际游戏截图" width="640">
 </p>
 
 ---
@@ -63,20 +63,20 @@
 
 Soul Sanctuary 使用 **400×300 / 560×420 / 640×480 原生缓冲 + CSS 像素化显示**，正交相机展示由 `BoxGeometry` 体素块构建的微缩场景，水面使用水平面片，**不使用任何外部纹理或模型文件**。
 
-### 第三轮美术升级 · 岸边生活（2026-10-22）
+### 第四轮美术升级 · 微缩旅行纪念品（2026-10-24）
 
-- **完整浮岛**：修复京都、中国、赛博、英国、法国、德国六个场景缺失地形的问题，12 个圣地共享连续台地与分层岩壁。
-- **清透水面**：消除重叠透明方块的网格感，补全岛下水域；五档水色向外淡出，整圈水幕改为三处局部跌水。
-- **岸边生活**：新增按地点配色的花园、雪覆灌木、芦苇、木栈钓位、木箱、桶和岸灯；蝴蝶、夜间光点与游鱼缓慢活动。
-- **旅行手账界面**：12 张原创 SVG 地标插画、营地目的地卡、地点编号铭牌、黄铜色镜头控件和统一工具栏；400×300 小窗下主按钮与工具栏互不遮挡。
-- **透明桌面**：移除窗口级灰色光晕，空白区域保持透明；保留像素体素风格与中英双语。
+- **十二地点全面精修**：主地标增加建筑构件与文化细节，补充生活道具、地方植物和差异化动态，保留清晰的钓鱼视线。
+- **自然岸线与水面**：浮岛减少规则圆盘感，水面使用断续泡沫、非均匀高光和破碎地标倒影。
+- **角色与收藏**：渔夫、猫咪和鱼类增强小窗辨识度；浮标、雨雪与氛围粒子使用更易读的轮廓。
+- **纸墨界面**：统一铭牌、按钮、卡片与地点强调色，提高小窗文字和交互目标可读性，支持减少动态效果。
+- **透明与性能**：四角 alpha 全为 0；十二地点均低于 140 draw calls / 150,000 三角形预算。
 
 <p align="center">
-  <img src="screenshots/art-v3/contact-sheet.png" alt="第三轮升级后的十二圣地实机总览" width="960">
-  <img src="screenshots/art-v3/camp.png" alt="带原创地标插画的营地面板" width="480">
+  <img src="screenshots/art-v4/contact-sheet.png" alt="第四轮升级后的十二圣地实机总览" width="960">
+  <img src="screenshots/art-v4/camp.png" alt="纸墨与暖金风格的营地面板" width="480">
 </p>
 
-实现、参考与复验步骤见 [第三轮美术升级记录](docs/art-upgrade-v3.md)。截图均来自实际 Electron 程序；浅色底仅用于文档展示，应用窗口仍然透明。
+实现、参考与复验步骤见 [第四轮美术升级记录](docs/art-upgrade-v4.md)。截图均来自实际 Electron 程序；浅色底仅用于文档展示，应用窗口仍然透明。
 
 | 视觉特性 | 说明 |
 |----------|------|
@@ -351,7 +351,7 @@ npm test
 npm run test:smoke
 
 # 实机美术复验：12 地点 + 三档窗口 + 渲染预算 + 透明度
-$env:ART_OUTPUT='screenshots/art-v3'
+$env:ART_OUTPUT='screenshots/art-v4'
 node scripts/art-review.cjs
 ```
 
@@ -397,6 +397,7 @@ SoulSanctuary/
 | [`art-reference-analysis.md`](docs/art-reference-analysis.md) | 同类游戏美术拆解（10 款，含引用） |
 | [`art-upgrade-v2.md`](docs/art-upgrade-v2.md) | 第二轮美术升级交付记录 |
 | [`art-upgrade-v3.md`](docs/art-upgrade-v3.md) | 第三轮升级：完整地形、清透水面、岸边生活与旅行手账界面 |
+| [`art-upgrade-v4.md`](docs/art-upgrade-v4.md) | 第四轮升级：十二地点精修、自然水面、角色与纸墨界面 |
 | [`design-audit.md`](docs/design-audit.md) | 游戏设计深度审核（8 维 16 项）|
 | [`camp-audit.md`](docs/camp-audit.md) | 营地系统设计审核 |
 | [`market-research.md`](docs/market-research.md) | 市场调研与竞品分析 |

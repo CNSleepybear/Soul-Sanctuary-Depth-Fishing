@@ -588,6 +588,8 @@ export class VoxelFishModel {
     const { add, mat } = B;
     // Body
     add(body, 1.1, 0.52, 0.62, 0, 0, 0, mat.body[0]);
+    add(body, 0.82, 0.125, 0.5, -0.08, 0.3125, 0, mat.body[1]);
+    add(body, 0.62, 0.0625, 0.44, -0.06, -0.3125, 0, mat.belly);
     add(body, 0.75, 0.42, 0.5, 0.85, 0.02, 0, mat.body[1]);
     add(body, 0.42, 0.32, 0.36, 1.35, 0.03, 0, mat.body[2]);
     add(body, 0.85, 0.1, 0.46, -0.1, -0.26, 0, mat.belly);

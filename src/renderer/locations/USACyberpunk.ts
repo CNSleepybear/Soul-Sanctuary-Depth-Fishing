@@ -203,26 +203,41 @@ export class USACyberpunk extends BaseLocation {
       });
     };
 
-    // ── Asphalt floor with a wet neon grid ──
+    // ── Wet asphalt: restrained seams, gutters and broken sign reflections ──
     for (let gx = -4.5; gx <= 4.5; gx += 1.5) {
       for (let gz = -4.5; gz <= 4.5; gz += 1.5) {
         if (Math.hypot(gx, gz) > 5.4) continue;
-        vox(body, gx, gz, 0, 1.5, 0.06, 1.5, rng.chance(0.3) ? p.asphaltLight : p.asphalt);
+        vox(body, gx, gz, 0, 1.47, 0.06, 1.47, rng.chance(0.3) ? p.asphaltLight : p.asphalt);
       }
     }
-    for (let i = -4; i <= 4; i++) {
-      vox(glow, 0, i * 1.15, 0.07, 8.6, 0.02, 0.06, i % 2 === 0 ? p.cyanDim : p.magentaDim);
-      vox(glow, i * 1.15, 0, 0.07, 0.06, 0.02, 8.6, i % 2 === 0 ? p.magentaDim : p.cyanDim);
+    for (const side of [-1, 1]) {
+      vox(body, side * 4.15, -0.3, 0.06, 0.22, 0.14, 7.2, p.trim);
+      for (let i = 0; i < 7; i++) {
+        vox(body, side * 3.93, -3.0 + i * 0.9, 0.07, 0.3, 0.035, 0.08, p.metal);
+      }
     }
-    // Wet-floor reflection dashes under the neon signs.
-    [
-      [2.8, -1.4, p.magentaDim],
-      [2.0, -0.4, p.cyanDim],
-      [-2.6, 0.8, p.cyanDim],
-      [1.0, 1.6, p.magentaDim],
-      [3.6, 0.2, p.orangeDim],
-    ].forEach(([x, z, color]) => {
-      vox(glow, x, z, 0.08, 0.34, 0.02, rng.nextFloat(0.9, 1.7), color, rng.nextFloat(-0.1, 0.1));
+    const reflections: [number, number, number][] = [
+      [2.8, -1.25, p.magentaDim],
+      [1.65, -0.55, p.cyanDim],
+      [-2.75, 0.75, p.cyanDim],
+      [0.4, -2.75, p.orangeDim],
+      [3.75, 0.65, p.magentaDim],
+    ];
+    reflections.forEach(([x, z, color], ri) => {
+      vox(glow, x, z + 0.65, 0.065, 0.72, 0.018, 2.15, mixHex(p.asphalt, color, 0.28));
+      for (let j = 0; j < 4; j++) {
+        const width = 0.18 + ((ri + j) % 3) * 0.11;
+        vox(
+          glow,
+          x + (j % 2 ? 0.12 : -0.08),
+          z + j * 0.43,
+          0.086,
+          width,
+          0.015,
+          0.25 + (j % 2) * 0.18,
+          color,
+        );
+      }
     });
 
     // ── Landmark: neon data pylon (right 2/3 line) ──
@@ -237,61 +252,87 @@ export class USACyberpunk extends BaseLocation {
     vox(glow, tx + 0.64, tz, 2.4, 0.06, 0.1, 1.0, p.magenta);
     vox(body, tx, tz, 2.8, 0.9, 1.0, 0.9, p.wall);
     vox(glow, tx, tz - 0.46, 3.0, 0.8, 0.1, 0.06, p.orange);
-    // Big magenta sign board + orange corner tag (<1% orange area).
-    vox(glow, tx, tz - 0.5, 2.0, 0.9, 0.62, 0.08, p.magenta);
-    vox(glow, tx - 0.4, tz - 0.56, 2.06, 0.1, 0.5, 0.06, p.cyan);
-    vox(glow, tx + 0.4, tz - 0.56, 2.06, 0.1, 0.5, 0.06, p.cyan);
+    // A dark sign cabinet with neon tubing and geometric glyphs, rather than a solid light panel.
+    vox(body, tx, tz - 0.5, 1.94, 1.08, 0.78, 0.14, p.signBack);
+    vox(glow, tx, tz - 0.59, 1.98, 0.96, 0.055, 0.045, p.magenta);
+    vox(glow, tx, tz - 0.59, 2.62, 0.96, 0.055, 0.045, p.magenta);
+    for (const side of [-1, 1])
+      vox(glow, tx + side * 0.46, tz - 0.59, 2.02, 0.055, 0.62, 0.045, p.cyan);
+    for (let i = 0; i < 3; i++) {
+      const gx = tx - 0.25 + i * 0.25;
+      vox(glow, gx, tz - 0.62, 2.18, 0.06, 0.3 - i * 0.05, 0.035, i === 1 ? p.orange : p.magenta);
+      vox(glow, gx + 0.07, tz - 0.62, 2.36 - i * 0.08, 0.18, 0.05, 0.035, p.magenta);
+    }
     vox(body, tx, tz, 3.8, 0.5, 0.9, 0.5, p.trim);
-    vox(glow, tx, tz, 4.7, 0.18, 0.35, 0.18, p.cyan);
-    vox(glow, tx, tz, 5.05, 0.1, 0.1, 0.1, p.magenta);
+    vox(body, tx, tz, 4.7, 0.32, 0.12, 0.32, p.metal);
+    vox(glow, tx, tz, 4.82, 0.14, 0.35, 0.14, p.cyan);
+    vox(glow, tx, tz, 5.17, 0.1, 0.1, 0.1, p.magenta);
     aoPatch(tx, tz, 2.8, 2.8);
 
-    // ── Canyon walls: dark cliff faces with window strips ──
-    // Left wall sits behind the fisherman, so his silhouette reads against it.
+    // ── Layered alley facades: floor bands, recessed windows, AC and fire escapes ──
     for (let i = 0; i < 6; i++) {
       const wx = -4.7 + i * 0.42;
       const wz = 1.95 + i * 0.1;
       const h = 3.8 + (i % 2) * 0.5;
       vox(body, wx, wz, 0, 0.46, h, 0.55, i % 2 ? p.wall : p.wallDark, -0.3);
-      vox(
-        glow,
-        wx,
-        wz + 0.29,
-        1.1 + (i % 3) * 0.7,
-        0.16,
-        0.16,
-        0.04,
-        i % 2 ? p.cyanDim : p.magentaDim,
-      );
-      vox(glow, wx, wz + 0.29, 2.4, 0.16, 0.5, 0.04, i % 3 === 0 ? p.orangeDim : p.cyanDim);
+      for (const y of [0.45, 2.0, 3.55]) vox(body, wx, wz + 0.04, y, 0.5, 0.1, 0.65, p.trim, -0.3);
+      for (let floor = 0; floor < 3; floor++) {
+        const wy = 0.85 + floor * 0.9;
+        vox(body, wx, wz + 0.3, wy, 0.27, 0.55, 0.07, p.signBack, -0.3);
+        vox(
+          glow,
+          wx,
+          wz + 0.345,
+          wy + 0.06,
+          0.17,
+          0.38,
+          0.035,
+          (i + floor) % 3 ? p.cyanDim : p.magentaDim,
+          -0.3,
+        );
+        vox(body, wx, wz + 0.38, wy + 0.05, 0.035, 0.4, 0.035, p.metal, -0.3);
+      }
+      if (i % 2 === 0) {
+        vox(body, wx, wz + 0.47, 0.52, 0.34, 0.28, 0.32, p.metal, -0.3);
+        vox(body, wx, wz + 0.64, 0.58, 0.24, 0.06, 0.035, p.wallDark, -0.3);
+      } else {
+        vox(body, wx, wz + 0.52, 1.92, 0.52, 0.08, 0.64, p.metal, -0.3);
+        vox(body, wx, wz + 0.8, 2.0, 0.5, 0.35, 0.045, p.metal, -0.3);
+      }
     }
-    // Right wall sits behind the pylon and frames the right edge.
     for (let i = 0; i < 7; i++) {
       const wx = 2.0 + i * 0.42;
       const wz = -4.5 - i * 0.12;
       const h = 4.4 + (i % 3) * 0.5;
       vox(body, wx, wz, 0, 0.5, h, 0.6, i % 2 ? p.wall : p.wallDark, 0.28);
-      vox(
-        glow,
-        wx,
-        wz + 0.31,
-        1.2 + (i % 4) * 0.75,
-        0.18,
-        0.18,
-        0.04,
-        i % 2 ? p.magentaDim : p.cyanDim,
-      );
-      vox(glow, wx, wz + 0.31, 3.2, 0.32, 0.5, 0.04, i % 3 === 0 ? p.orangeDim : p.magentaDim);
+      for (const y of [0.5, 2.15, 3.9]) vox(body, wx, wz + 0.04, y, 0.54, 0.11, 0.7, p.trim, 0.28);
+      for (let floor = 0; floor < 4; floor++) {
+        const wy = 0.9 + floor * 0.82;
+        vox(body, wx, wz + 0.32, wy, 0.34, 0.48, 0.07, p.signBack, 0.28);
+        vox(
+          glow,
+          wx,
+          wz + 0.365,
+          wy + 0.05,
+          0.23,
+          0.33,
+          0.035,
+          (i + floor) % 3 === 0 ? p.orangeDim : floor % 2 ? p.magentaDim : p.cyanDim,
+          0.28,
+        );
+        vox(body, wx, wz + 0.4, wy + 0.2, 0.36, 0.045, 0.04, p.metal, 0.28);
+      }
+      if (i === 1 || i === 5) vox(body, wx + 0.18, wz + 0.43, 0.2, 0.08, 3.8, 0.08, p.metal);
     }
     aoPatch(-3.9, 2.0, 2.6, 1.6);
     aoPatch(3.3, -4.4, 2.8, 1.6);
 
-    // Overhead cables sagging between the two walls.
+    // Dark overhead cables keep the neon signs as the brightest linework.
     for (const cableZ of [0.6, -1.2, -2.8]) {
       for (let i = 0; i < 7; i++) {
         const t = i / 6;
         const sag = Math.sin(t * Math.PI) * 0.5;
-        vox(glow, -3.6 + t * 6.2, cableZ + t * 0.4, 3.4 - sag, 1.05, 0.035, 0.035, p.cyanDim);
+        vox(body, -3.6 + t * 6.2, cableZ + t * 0.4, 3.4 - sag, 1.05, 0.035, 0.035, p.wallDark);
       }
     }
 
@@ -319,11 +360,19 @@ export class USACyberpunk extends BaseLocation {
       aoPatch(rx, rz, 1.4, 1.1);
     });
 
-    // Back alley shopfront with an orange sign (small accent area).
+    // Recessed shutter shop, ribbed awning and a small projecting neon sign.
     vox(body, 0.4, -4.7, 0, 2.4, 2.6, 0.7, p.wallDark);
-    vox(glow, 0.4, -4.32, 1.9, 1.7, 0.4, 0.06, p.orange);
-    vox(glow, 0.4, -4.32, 0.9, 1.1, 1.0, 0.05, p.orangeDim);
-    vox(glow, -1.1, -4.35, 1.5, 0.6, 0.3, 0.06, p.cyan);
+    vox(body, 0.4, -4.31, 0.18, 1.5, 1.45, 0.1, p.metal);
+    for (let i = 0; i < 7; i++)
+      vox(body, 0.4, -4.24, 0.28 + i * 0.18, 1.42, 0.055, 0.045, p.wallDark);
+    vox(body, 0.4, -4.25, 1.78, 1.95, 0.18, 0.62, p.orangeDim);
+    vox(glow, 0.4, -4.24, 1.98, 1.75, 0.22, 0.08, p.orange);
+    for (let i = 0; i < 5; i++)
+      vox(body, -0.32 + i * 0.36, -4.17, 1.82, 0.07, 0.12, 0.5, p.signBack);
+    vox(body, -1.1, -4.35, 1.35, 0.68, 0.86, 0.12, p.signBack);
+    vox(glow, -1.1, -4.27, 1.43, 0.5, 0.055, 0.04, p.cyan);
+    vox(glow, -1.1, -4.27, 1.86, 0.5, 0.055, 0.04, p.cyan);
+    vox(glow, -1.28, -4.27, 1.49, 0.055, 0.38, 0.04, p.magenta);
 
     // ── Foreground frame: vending machine + cable bundle at the right edge ──
     const vx = 4.75;

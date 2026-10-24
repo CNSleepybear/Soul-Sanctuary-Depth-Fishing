@@ -238,12 +238,23 @@ export class GermanyBlackForest extends BaseLocation {
       );
     }
 
-    // ── Landmark: half-timbered Black Forest chalet ──
+    // ── Landmark: deep-eaved Black Forest chalet with joined timber framing ──
     const hx = 2.5;
     const hz = -2.9;
     vox(body, hx, hz, 0, 3.4, 0.4, 2.8, p.stone);
+    for (let i = 0; i < 6; i++) {
+      vox(
+        body,
+        hx - 1.35 + i * 0.54,
+        hz + 1.42,
+        0.08,
+        0.5,
+        0.22,
+        0.08,
+        i % 2 ? p.stone : p.stoneDark,
+      );
+    }
     vox(body, hx, hz, 0.4, 3.0, 2.2, 2.4, p.plaster);
-    // corner posts + rails + half-timber braces on the camera-facing wall
     [
       [-1.5, 1.2],
       [1.5, 1.2],
@@ -251,45 +262,138 @@ export class GermanyBlackForest extends BaseLocation {
       [1.5, -1.2],
     ].forEach(([ox, oz]) => {
       vox(body, hx + ox, hz + oz, 0.4, 0.16, 2.2, 0.16, p.timber);
+      vox(body, hx + ox, hz + oz, 0.34, 0.24, 0.16, 0.24, p.timberLight);
     });
     [0.5, 1.45, 2.5].forEach((y) => {
-      vox(body, hx, hz + 1.21, y, 3.0, 0.14, 0.06, p.timber);
-      vox(body, hx, hz - 1.21, y, 3.0, 0.14, 0.06, p.timber);
-      vox(body, hx + 1.51, hz, y, 0.06, 0.14, 2.4, p.timber);
-      vox(body, hx - 1.51, hz, y, 0.06, 0.14, 2.4, p.timber);
+      vox(body, hx, hz + 1.21, y, 3.0, 0.14, 0.08, p.timber);
+      vox(body, hx, hz - 1.21, y, 3.0, 0.14, 0.08, p.timber);
+      vox(body, hx + 1.51, hz, y, 0.08, 0.14, 2.4, p.timber);
+      vox(body, hx - 1.51, hz, y, 0.08, 0.14, 2.4, p.timber);
     });
-    vox(body, hx - 1.0, hz + 1.22, 0.85, 0.1, 1.0, 0.06, p.timber, 0.55);
-    vox(body, hx + 1.0, hz + 1.22, 0.85, 0.1, 1.0, 0.06, p.timber, -0.55);
-    // Door + warm windows + green shutters.
+    // Pixel-stepped mortise braces read as diagonals without non-box geometry.
+    for (const side of [-1, 1]) {
+      for (let step = 0; step < 6; step++) {
+        const ox = side * (0.48 + step * 0.14);
+        vox(body, hx + ox, hz + 1.235, 0.62 + step * 0.14, 0.2, 0.18, 0.08, p.timber);
+        vox(body, hx + ox, hz + 1.235, 1.58 + step * 0.13, 0.2, 0.17, 0.08, p.timber);
+      }
+      for (let step = 0; step < 5; step++) {
+        vox(
+          body,
+          hx + side * 1.535,
+          hz - 0.75 + step * 0.34,
+          0.72 + step * 0.18,
+          0.08,
+          0.22,
+          0.4,
+          p.timber,
+        );
+      }
+    }
     vox(body, hx, hz + 1.23, 0.4, 0.6, 1.15, 0.08, p.timberLight);
+    vox(body, hx + 0.2, hz + 1.29, 0.92, 0.07, 0.07, 0.05, p.stone);
     vox(glow, hx, hz + 1.24, 0.75, 0.3, 0.5, 0.06, p.warm);
     [-0.85, 0.85].forEach((ox) => {
       vox(glow, hx + ox, hz + 1.24, 1.25, 0.5, 0.45, 0.06, p.warm);
-      vox(body, hx + ox - 0.38, hz + 1.26, 1.2, 0.16, 0.6, 0.06, p.shutter);
-      vox(body, hx + ox + 0.38, hz + 1.26, 1.2, 0.16, 0.6, 0.06, p.shutter);
+      vox(body, hx + ox, hz + 1.29, 1.23, 0.05, 0.48, 0.04, p.timber);
+      vox(body, hx + ox, hz + 1.29, 1.45, 0.52, 0.05, 0.04, p.timber);
+      for (const side of [-1, 1]) {
+        vox(body, hx + ox + side * 0.38, hz + 1.26, 1.2, 0.16, 0.6, 0.06, p.shutter);
+        for (let slat = 0; slat < 3; slat++) {
+          vox(
+            body,
+            hx + ox + side * 0.38,
+            hz + 1.3,
+            1.28 + slat * 0.15,
+            0.17,
+            0.035,
+            0.025,
+            p.timberLight,
+          );
+        }
+      }
+      vox(body, hx + ox, hz + 1.36, 1.05, 0.68, 0.16, 0.22, p.timberLight);
+      for (let flower = 0; flower < 4; flower++) {
+        vox(
+          body,
+          hx + ox - 0.24 + flower * 0.16,
+          hz + 1.36,
+          1.21,
+          0.1,
+          0.12,
+          0.1,
+          flower % 2 ? p.shutter : p.pineLight,
+        );
+      }
     });
-    // Stepped gable roof (deep brown) with snow on every step.
-    const roofRows = [3.7, 3.2, 2.7, 2.2, 1.7, 1.2, 0.6];
+    // Broad stepped roof, uneven snow pillows and icicle fringe.
+    const roofRows = [3.9, 3.4, 2.9, 2.4, 1.9, 1.4, 0.8, 0.35];
     roofRows.forEach((w, i) => {
-      vox(body, hx, hz, 2.6 + i * 0.22, w, 0.24, 3.0, i % 2 ? p.roof : p.roofDark);
-      vox(body, hx, hz, 2.84 + i * 0.22, w * 0.94, 0.07, 2.9, p.snow);
+      vox(body, hx, hz, 2.6 + i * 0.22, w, 0.24, 3.15, i % 2 ? p.roof : p.roofDark);
+      vox(body, hx, hz, 2.84 + i * 0.22, w * 0.97, 0.08, 3.08, i % 3 ? p.snow : p.snowCool);
+      if (i < 5) {
+        vox(body, hx - w * 0.28, hz + 1.5, 2.87 + i * 0.22, w * 0.32, 0.11, 0.24, p.snow);
+      }
     });
-    // Chimney + snow cap + cuckoo clock on the gable.
+    for (let i = 0; i < 9; i++) {
+      vox(
+        body,
+        hx - 1.7 + i * 0.42,
+        hz + 1.54,
+        2.54 - (i % 3) * 0.06,
+        0.07,
+        0.22 + (i % 3) * 0.08,
+        0.07,
+        p.snowCool,
+      );
+    }
+    // Front gable timber fan and tiny carved balcony.
+    vox(body, hx, hz + 1.6, 2.72, 0.13, 1.45, 0.1, p.timber);
+    for (const side of [-1, 1]) {
+      for (let step = 0; step < 5; step++) {
+        vox(
+          body,
+          hx + side * (0.14 + step * 0.24),
+          hz + 1.59,
+          2.78 + step * 0.19,
+          0.3,
+          0.12,
+          0.1,
+          p.timber,
+        );
+      }
+    }
+    vox(body, hx, hz + 1.52, 2.42, 2.0, 0.12, 0.48, p.timberLight);
+    for (let i = -4; i <= 4; i++) {
+      vox(body, hx + i * 0.22, hz + 1.75, 2.53, 0.07, 0.42, 0.07, p.timber);
+    }
+    vox(body, hx, hz + 1.75, 2.91, 2.05, 0.09, 0.09, p.timber);
     vox(body, hx + 0.85, hz - 0.55, 3.4, 0.42, 1.2, 0.42, p.timberLight);
-    vox(body, hx + 0.85, hz - 0.55, 4.6, 0.5, 0.1, 0.5, p.snow);
-    vox(body, hx, hz + 1.28, 2.85, 0.34, 0.46, 0.08, p.timber);
-    vox(glow, hx, hz + 1.33, 2.98, 0.18, 0.18, 0.04, p.warm);
-    // Porch step + firewood by the door.
+    for (let i = 0; i < 4; i++) {
+      vox(body, hx + 0.85, hz - 0.55, 3.52 + i * 0.25, 0.45, 0.06, 0.45, p.stoneDark);
+    }
+    vox(body, hx + 0.85, hz - 0.55, 4.6, 0.54, 0.12, 0.54, p.snow);
+    vox(body, hx, hz + 1.68, 3.22, 0.34, 0.46, 0.08, p.timber);
+    vox(glow, hx, hz + 1.73, 3.35, 0.18, 0.18, 0.04, p.warm);
     vox(body, hx, hz + 1.6, 0, 1.0, 0.18, 0.5, p.wood);
+    vox(body, hx, hz + 1.83, 0, 1.2, 0.1, 0.3, p.snowCool);
     aoPatch(hx, hz, 4.0, 3.4);
 
-    // ── Barn / shed with a snow roof ──
+    // ── Barn / shed with board seams, sliding door and a snow roof ──
     const bx = -3.6;
     const bz = -2.5;
     vox(body, bx, bz, 0, 2.2, 1.8, 1.9, p.timberLight);
+    for (let i = 0; i < 8; i++) {
+      vox(body, bx - 0.96 + i * 0.275, bz + 0.96, 0.08, 0.045, 1.64, 0.04, p.timber);
+    }
     for (let i = 0; i < 3; i++) {
       vox(body, bx, bz, 0.3 + i * 0.55, 2.3, 0.1, 2.0, p.timber);
     }
+    vox(body, bx - 0.25, bz + 1.0, 0.08, 0.9, 1.45, 0.08, p.roofDark);
+    for (let step = 0; step < 5; step++) {
+      vox(body, bx - 0.58 + step * 0.17, bz + 1.05, 0.25 + step * 0.23, 0.24, 0.12, 0.05, p.wood);
+    }
+    vox(body, bx - 0.25, bz + 1.07, 1.5, 1.3, 0.1, 0.08, p.stoneDark);
     vox(body, bx, bz, 1.8, 2.5, 0.18, 2.2, p.roof);
     vox(body, bx, bz, 1.98, 2.3, 0.12, 2.0, p.snow);
     vox(body, bx, bz, 2.1, 1.4, 0.2, 1.4, p.roofDark);
@@ -297,26 +401,30 @@ export class GermanyBlackForest extends BaseLocation {
     vox(glow, bx + 0.55, bz + 0.98, 0.9, 0.24, 0.3, 0.05, p.warm);
     aoPatch(bx, bz, 2.8, 2.4);
 
-    // ── Woodpile (stacked log ends) ──
+    // ── Woodpile: individual log ends, retaining stakes and snowy tarp ──
     const wx = 0.5;
     const wz = -2.15;
+    vox(body, wx, wz, 0, 1.25, 0.12, 0.65, p.timber);
     for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3 - (row % 2); col++) {
-        vox(
-          body,
-          wx - 0.3 + col * 0.3,
-          wz,
-          row * 0.28,
-          0.8,
-          0.26,
-          0.26,
-          row % 2 ? p.wood : p.timberLight,
-          0.08,
-        );
+      for (let col = 0; col < 4 - row; col++) {
+        const lx = wx - 0.45 + col * 0.3 + row * 0.14;
+        const ly = 0.12 + row * 0.25;
+        vox(body, lx, wz, ly, 0.82, 0.22, 0.24, row % 2 ? p.wood : p.timberLight, 0.08);
+        vox(body, lx, wz + 0.13, ly + 0.035, 0.18, 0.16, 0.035, p.wood, 0.08);
+        vox(body, lx, wz + 0.155, ly + 0.075, 0.08, 0.07, 0.02, p.timberLight, 0.08);
       }
     }
-    vox(body, wx, wz, 0.86, 1.0, 0.08, 0.4, p.snow);
-    aoPatch(wx, wz, 1.6, 1.0);
+    for (const side of [-1, 1]) {
+      vox(body, wx + side * 0.72, wz, 0, 0.1, 1.05, 0.1, p.timber);
+    }
+    vox(body, wx, wz, 0.9, 1.35, 0.1, 0.52, p.snow);
+    vox(body, wx - 0.25, wz + 0.18, 0.96, 0.65, 0.12, 0.28, p.snowCool);
+    // Chopping block and axe beside the stack.
+    vox(body, wx + 1.0, wz + 0.15, 0, 0.42, 0.42, 0.42, p.trunk);
+    vox(body, wx + 1.0, wz + 0.15, 0.42, 0.44, 0.06, 0.44, p.wood);
+    vox(body, wx + 1.0, wz + 0.15, 0.48, 0.07, 0.65, 0.07, p.timberLight);
+    vox(body, wx + 1.0, wz + 0.15, 1.03, 0.32, 0.16, 0.1, p.stoneDark);
+    aoPatch(wx, wz, 2.4, 1.2);
 
     // ── Snow-capped pines ──
     const pine = (px: number, pz: number, s: number): void => {

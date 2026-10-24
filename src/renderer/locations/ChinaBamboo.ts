@@ -213,67 +213,130 @@ export class ChinaBamboo extends BaseLocation {
     // ── Landmark: hexagonal ting pavilion (right 2/3 line) ──
     const px = 2.6;
     const pz = -3.0;
-    vox(body, px, pz, 0, 3.1, 0.24, 3.1, p.stone);
-    vox(body, px, pz, 0.24, 2.6, 0.2, 2.6, p.stoneLight);
+    vox(body, px, pz, 0, 3.35, 0.16, 3.35, p.stoneDark, Math.PI / 4);
+    vox(body, px, pz, 0.16, 3.05, 0.14, 3.05, p.stone);
+    vox(body, px, pz, 0.3, 2.65, 0.14, 2.65, p.stoneLight, Math.PI / 4);
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
       const cx = px + Math.cos(a) * 1.35;
       const cz = pz + Math.sin(a) * 1.35;
-      vox(body, cx, cz, 0.44, 0.16, 2.1, 0.16, p.woodDark, a);
-      vox(body, cx, cz, 0.44, 0.34, 0.14, 0.34, p.stoneDark, a);
-      // railing between columns
-      if (i % 2 === 0) {
-        vox(
-          body,
-          px + Math.cos(a) * 1.1,
-          pz + Math.sin(a) * 1.1,
-          0.9,
-          0.7,
-          0.08,
-          0.1,
-          p.wood,
-          a + Math.PI / 2,
-        );
+      vox(body, cx, cz, 0.44, 0.34, 0.16, 0.34, p.stoneDark, a);
+      vox(body, cx, cz, 0.6, 0.17, 1.9, 0.17, p.woodDark, a);
+      vox(body, cx, cz, 0.72, 0.22, 0.09, 0.22, p.gold, a);
+      vox(body, cx, cz, 2.26, 0.28, 0.18, 0.28, p.wood, a);
+      vox(body, cx, cz, 2.4, 0.52, 0.12, 0.24, p.woodDark, a);
+      if (i !== 1 && i !== 2) {
+        const ra = a + Math.PI / 6;
+        const rx = px + Math.cos(ra) * 1.17;
+        const rz = pz + Math.sin(ra) * 1.17;
+        vox(body, rx, rz, 0.62, 1.05, 0.1, 0.1, p.wood, ra + Math.PI / 2);
+        vox(body, rx, rz, 1.02, 1.05, 0.1, 0.1, p.wood, ra + Math.PI / 2);
+        for (const offset of [-0.32, 0, 0.32]) {
+          vox(
+            body,
+            rx + Math.cos(ra + Math.PI / 2) * offset,
+            rz + Math.sin(ra + Math.PI / 2) * offset,
+            0.7,
+            0.07,
+            0.34,
+            0.07,
+            p.woodDark,
+          );
+        }
       }
     }
-    // glowing lattice screens
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + Math.PI / 6 + Math.PI / 6;
-      const cx = px + Math.cos(a) * 1.16;
-      const cz = pz + Math.sin(a) * 1.16;
-      vox(glow, cx, cz, 0.95, 0.85, 1.2, 0.06, i % 2 ? p.paper : mixHex(p.paper, p.gold, 0.4), a);
+    // Open lattice panels leave the pavilion interior and front silhouette readable.
+    for (let i = 0; i < 3; i++) {
+      const a = Math.PI + (i / 3) * Math.PI * 2;
+      const cx = px + Math.cos(a) * 1.08;
+      const cz = pz + Math.sin(a) * 1.08;
+      vox(glow, cx, cz, 1.12, 0.78, 0.82, 0.045, mixHex(p.paper, p.gold, 0.3), a);
+      for (const offset of [-0.25, 0, 0.25]) {
+        vox(
+          body,
+          cx + Math.cos(a) * offset,
+          cz + Math.sin(a) * offset,
+          1.1,
+          0.055,
+          0.9,
+          0.07,
+          p.woodDark,
+          a,
+        );
+      }
+      vox(body, cx, cz, 1.48, 0.84, 0.06, 0.08, p.woodDark, a);
     }
-    // three tiered eaves + gold finial
-    vox(body, px, pz, 2.5, 3.1, 0.2, 3.1, p.roof, 0.26);
-    vox(body, px, pz, 2.7, 2.6, 0.18, 2.6, p.roofDark, 0.26);
-    vox(body, px, pz, 3.0, 2.2, 0.18, 2.2, p.roof, 0.42);
-    vox(body, px, pz, 3.18, 1.7, 0.16, 1.7, p.roofDark, 0.42);
-    vox(body, px, pz, 3.42, 1.15, 0.16, 1.15, p.roof, 0.55);
-    vox(body, px, pz, 3.58, 0.6, 0.2, 0.6, p.roofDark, 0.55);
-    vox(body, px, pz, 3.78, 0.22, 0.42, 0.22, p.gold);
-    vox(glow, px, pz, 3.9, 0.14, 0.14, 0.14, p.gold);
-    aoPatch(px, pz, 3.4, 3.4);
+    vox(glow, px, pz, 1.55, 0.36, 0.58, 0.36, p.paper);
+    vox(body, px, pz, 2.12, 0.48, 0.1, 0.48, p.woodDark);
+    // Broad lower eaves, a recessed upper roof and lifted corners create a clear pagoda profile.
+    vox(body, px, pz, 2.5, 3.65, 0.16, 3.65, p.roofDark, 0.26);
+    vox(body, px, pz, 2.66, 3.35, 0.18, 3.35, p.roof, 0.26);
+    vox(body, px, pz, 2.84, 2.7, 0.16, 2.7, p.roofDark, 0.26);
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + 0.26;
+      vox(body, px + Math.cos(a) * 1.72, pz + Math.sin(a) * 1.72, 2.7, 0.48, 0.16, 0.48, p.roof, a);
+      vox(
+        body,
+        px + Math.cos(a) * 1.86,
+        pz + Math.sin(a) * 1.86,
+        2.84,
+        0.24,
+        0.18,
+        0.24,
+        p.gold,
+        a,
+      );
+    }
+    vox(body, px, pz, 3.0, 1.75, 0.48, 1.75, p.woodDark, 0.42);
+    vox(body, px, pz, 3.48, 2.35, 0.16, 2.35, p.roof, 0.42);
+    vox(body, px, pz, 3.64, 1.85, 0.16, 1.85, p.roofDark, 0.42);
+    vox(body, px, pz, 3.8, 1.25, 0.18, 1.25, p.roof, 0.55);
+    vox(body, px, pz, 3.98, 0.58, 0.18, 0.58, p.roofDark, 0.55);
+    vox(body, px, pz, 4.16, 0.18, 0.4, 0.18, p.gold);
+    vox(glow, px, pz, 4.56, 0.12, 0.12, 0.12, p.gold);
+    aoPatch(px, pz, 3.6, 3.6);
 
-    // ── Moon gate in a low courtyard wall ──
+    // ── Moon gate: a true circular opening with a dark, readable inner rim ──
     const mx = -3.7;
     const mz = -1.0;
-    for (let gx = -1.5; gx <= 1.5; gx += 0.25) {
-      for (let gy = 0; gy <= 2.4; gy += 0.25) {
-        if (gx * gx + gy * gy < 0.72) continue;
+    for (let ix = -6; ix <= 6; ix++) {
+      for (let iy = 0; iy <= 10; iy++) {
+        const gx = ix * 0.25;
+        const gy = iy * 0.24;
+        const opening = (gx * gx) / (0.88 * 0.88) + ((gy - 1.08) * (gy - 1.08)) / (1.08 * 1.08);
+        if (opening < 1.08) continue;
         vox(
           body,
           mx + gx,
           mz,
           gy,
-          0.26,
-          0.26,
-          0.34,
-          (Math.round(gx * 4) + Math.round(gy * 4)) % 2 ? p.stoneLight : p.stone,
+          0.255,
+          0.245,
+          0.38,
+          (ix + iy) % 3 === 0 ? p.stoneLight : p.stone,
         );
       }
     }
-    vox(body, mx, mz, 2.62, 3.3, 0.18, 0.5, p.roofDark);
-    vox(body, mx, mz, 2.8, 3.7, 0.14, 0.62, p.roof);
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      const gy = 1.08 + Math.sin(a) * 1.04;
+      vox(
+        body,
+        mx + Math.cos(a) * 0.86,
+        mz + 0.03,
+        Math.max(0, gy - 0.1),
+        0.2,
+        0.2,
+        0.44,
+        p.stoneDark,
+        a,
+      );
+    }
+    vox(body, mx, mz, 2.58, 3.35, 0.14, 0.52, p.roofDark);
+    for (let i = -4; i <= 4; i++) {
+      const lift = Math.abs(i) === 4 ? 0.12 : 0;
+      vox(body, mx + i * 0.42, mz, 2.72 + lift, 0.45, 0.14, 0.68, i % 2 ? p.roof : p.roofDark);
+    }
     aoPatch(mx, mz, 3.6, 0.8);
 
     // ── Koi pond + stone bridge ──
@@ -308,15 +371,19 @@ export class ChinaBamboo extends BaseLocation {
       const t = i / bridgeSegs;
       const bx = bridgeA + (bridgeB - bridgeA) * t;
       const by = 0.16 + Math.sin(t * Math.PI) * 0.32;
-      vox(body, bx, kz, by, 0.52, 0.12, 0.95, i % 2 ? p.stone : p.stoneLight);
-      if (i > 0 && i < bridgeSegs) {
-        vox(body, bx, kz + 0.42, by + 0.12, 0.08, 0.42, 0.08, p.stoneDark);
-        vox(body, bx, kz - 0.42, by + 0.12, 0.08, 0.42, 0.08, p.stoneDark);
-        vox(body, bx, kz + 0.42, by + 0.54, 0.5, 0.07, 0.08, p.stoneDark);
-        vox(body, bx, kz - 0.42, by + 0.54, 0.5, 0.07, 0.08, p.stoneDark);
+      vox(body, bx, kz, by - 0.16, 0.5, 0.18, 0.74, p.stoneDark);
+      vox(body, bx, kz, by, 0.48, 0.12, 0.98, i % 2 ? p.stone : p.stoneLight);
+      for (const side of [-1, 1]) {
+        const rz = kz + side * 0.44;
+        vox(body, bx, rz, by + 0.52, 0.52, 0.09, 0.12, p.stoneDark);
+        vox(body, bx, rz, by + 0.29, 0.5, 0.06, 0.08, p.stone);
+        if (i > 0 && i < bridgeSegs) {
+          vox(body, bx, rz, by + 0.1, 0.1, 0.44, 0.1, p.stoneDark);
+          vox(body, bx, rz, by + 0.61, 0.18, 0.1, 0.18, p.stoneLight);
+        }
       }
+      if (i === 0 || i === bridgeSegs) vox(body, bx, kz, 0, 0.5, 0.18, 1.16, p.stoneDark);
     }
-    // Static koi silhouettes under the surface.
     [
       [-1.5, 1.0, p.koiOrange],
       [-0.2, 1.8, p.koiWhite],
@@ -326,7 +393,7 @@ export class ChinaBamboo extends BaseLocation {
     });
     aoPatch(kx, kz, 4.8, 3.6);
 
-    // ── Bamboo grove: clustered stalks with node joints and leaf fans ──
+    // ── Bamboo grove: jointed culms with deliberate, airy leaf fans ──
     const bamboo = (bx: number, bz: number, s: number): void => {
       const stalks = 3 + rng.nextInt(0, 2);
       for (let st = 0; st < stalks; st++) {
@@ -338,22 +405,37 @@ export class ChinaBamboo extends BaseLocation {
         const segs = Math.max(3, Math.round(h / 0.62));
         for (let i = 0; i < segs; i++) {
           const sh = h / segs;
-          vox(body, sx, sz, i * sh, 0.16, sh * 0.9, 0.16, i % 2 ? p.bamboo : p.bambooLight);
+          vox(body, sx, sz, i * sh, 0.15, sh * 0.9, 0.15, i % 2 ? p.bamboo : p.bambooLight);
           vox(body, sx, sz, i * sh, 0.2, 0.05, 0.2, p.bambooDark);
         }
-        for (let i = 0; i < 4; i++) {
-          const la = rng.nextFloat(0, Math.PI * 2);
+        for (let tier = 0; tier < 2; tier++) {
+          const la = a + tier * 2.2;
+          const ly = h - 0.35 * s - tier * 0.62 * s;
           vox(
             body,
-            sx + Math.cos(la) * rng.nextFloat(0.15, 0.5),
-            sz + Math.sin(la) * rng.nextFloat(0.15, 0.5),
-            h - rng.nextFloat(0.1, 0.6),
-            rng.nextFloat(0.3, 0.6),
-            0.07,
-            rng.nextFloat(0.3, 0.6),
-            i % 2 ? p.bambooLight : p.bamboo,
+            sx + Math.cos(la) * 0.22,
+            sz + Math.sin(la) * 0.22,
+            ly,
+            0.55,
+            0.055,
+            0.055,
+            p.bambooDark,
             la,
           );
+          for (const leaf of [-1, 0, 1]) {
+            const fa = la + leaf * 0.48;
+            vox(
+              body,
+              sx + Math.cos(la) * 0.42 + Math.cos(fa) * 0.2,
+              sz + Math.sin(la) * 0.42 + Math.sin(fa) * 0.2,
+              ly + Math.abs(leaf) * 0.07,
+              0.58,
+              0.055,
+              0.16,
+              leaf === 0 ? p.bambooLight : p.bamboo,
+              fa,
+            );
+          }
         }
       }
       aoPatch(bx, bz, 1.6 * s, 1.6 * s);
@@ -521,21 +603,21 @@ export class ChinaBamboo extends BaseLocation {
     );
     this._fields.push(
       new DriftField(this.group, {
-        count: 20,
+        count: 14,
         mode: 'float',
         colors: [0x9fb8ac, 0xc4d4c8],
-        cx: 0,
-        cz: -1.5,
-        areaX: 11,
-        areaZ: 9,
-        yMin: 0.6,
-        yMax: 2.4,
-        size: [1.6, 0.1, 1.0],
-        speedMin: 0.04,
-        speedMax: 0.1,
-        sway: 0.4,
-        spin: [0, 0.02, 0],
-        opacity: 0.16,
+        cx: -0.8,
+        cz: -1.8,
+        areaX: 10,
+        areaZ: 6,
+        yMin: 0.45,
+        yMax: 1.35,
+        size: [2.2, 0.08, 1.15],
+        speedMin: 0.035,
+        speedMax: 0.075,
+        sway: 0.32,
+        spin: [0, 0.015, 0],
+        opacity: 0.13,
         additive: false,
       }),
     );

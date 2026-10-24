@@ -274,7 +274,7 @@ export class DenmarkNyhavn extends BaseLocation {
     stage.solid(spireX, SURFACE_Y + 4.02, spireZ, 0.12, 0.24, 0.12, copper);
     stage.glow(spireX, SURFACE_Y + 4.22, spireZ, 0.12, 0.12, 0.12, glow);
 
-    // ── Secondary: six townhouses with uneven Nyhavn widths ──
+    // ── Secondary: six non-repeating Nyhavn facades and stepped gables ──
     const houseSpecs: { x: number; w: number; h: number; color: number }[] = [
       { x: -2.15, w: 1.0, h: 2.5, color: houseYellow },
       { x: -1.2, w: 0.85, h: 2.95, color: houseRed },
@@ -287,53 +287,132 @@ export class DenmarkNyhavn extends BaseLocation {
       const spec = houseSpecs[i];
       const z = -3.15 + (i % 2) * 0.2;
       const bodyDepth = 1.35;
+      const front = z + bodyDepth / 2;
+      const trimColor = i % 2 ? snowShade : mixHex(snow, spec.color, 0.12);
       stage.solid(spec.x, SURFACE_Y + spec.h / 2, z, spec.w, spec.h, bodyDepth, spec.color);
-      // gable roof + snow cap
-      stage.solid(
+      stage.trim(
         spec.x,
-        SURFACE_Y + spec.h + 0.12,
-        z,
-        spec.w * 0.94,
+        SURFACE_Y + 0.12,
+        front + 0.025,
+        spec.w + 0.04,
         0.24,
-        bodyDepth * 0.9,
-        roofDark,
+        0.07,
+        shade(spec.color, 0.7),
       );
-      stage.trim(spec.x, SURFACE_Y + spec.h + 0.3, z, spec.w * 0.9, 0.12, bodyDepth * 0.86, snow);
-      // two lit windows per floor
-      for (let floor = 0; floor < 2; floor++) {
-        const wy = SURFACE_Y + 0.62 + floor * 0.85;
-        if (wy > SURFACE_Y + spec.h - 0.45) continue;
-        for (const dir of [-1, 1]) {
-          const wx = spec.x + dir * spec.w * 0.22;
-          stage.glow(wx, wy, z + bodyDepth / 2 + 0.02, 0.22, 0.3, 0.06, tallow);
-          stage.trim(wx, wy, z + bodyDepth / 2 + 0.04, 0.28, 0.36, 0.04, roofDark);
-          stage.glow(wx, wy, z + bodyDepth / 2 + 0.05, 0.2, 0.26, 0.04, tallow);
+      stage.trim(
+        spec.x,
+        SURFACE_Y + spec.h - 0.08,
+        front + 0.04,
+        spec.w + 0.12,
+        0.14,
+        0.12,
+        trimColor,
+      );
+      // Three roof rhythms: stair gable, broad cornice and narrow pointed gable.
+      const roofSteps = i % 3 === 1 ? 3 : 5;
+      for (let step = 0; step < roofSteps; step++) {
+        const rw = spec.w * (1 - step / (roofSteps + 0.3));
+        const ry = SURFACE_Y + spec.h + 0.08 + step * 0.17;
+        stage.solid(spec.x, ry, z, rw, 0.2, bodyDepth * (0.96 - step * 0.035), roofDark);
+        stage.trim(
+          spec.x,
+          ry + 0.12,
+          z,
+          rw * 0.96,
+          0.07,
+          bodyDepth * (0.92 - step * 0.035),
+          step % 2 ? snowShade : snow,
+        );
+        if (i % 3 !== 1) {
+          stage.trim(spec.x, ry, front + 0.025, rw * 0.9, 0.16, 0.08, spec.color);
+          stage.trim(spec.x - rw / 2, ry + 0.09, front + 0.08, 0.1, 0.1, 0.12, snow);
+          stage.trim(spec.x + rw / 2, ry + 0.09, front + 0.08, 0.1, 0.1, 0.12, snow);
         }
       }
-      // chimney with a snow cap
-      if (i % 2 === 0) {
-        stage.solid(
-          spec.x - spec.w * 0.24,
-          SURFACE_Y + spec.h + 0.4,
-          z - 0.2,
-          0.16,
-          0.5,
-          0.16,
-          roofDark,
-        );
-        stage.trim(
-          spec.x - spec.w * 0.24,
-          SURFACE_Y + spec.h + 0.66,
-          z - 0.2,
-          0.2,
-          0.06,
-          0.2,
-          snow,
-        );
+      if (i % 3 !== 1) {
+        const atticY = SURFACE_Y + spec.h + 0.34;
+        stage.trim(spec.x, atticY, front + 0.1, 0.25, 0.3, 0.07, trimColor);
+        stage.glow(spec.x, atticY, front + 0.15, 0.13, 0.18, 0.04, tallow);
       }
+      // Individual floor counts, window mullions, sills and shutters.
+      const floors = Math.max(2, Math.floor(spec.h / 0.76));
+      for (let floor = 0; floor < floors; floor++) {
+        const wy = SURFACE_Y + 0.62 + floor * 0.72;
+        if (wy > SURFACE_Y + spec.h - 0.35) continue;
+        for (const dir of [-1, 1]) {
+          const wx = spec.x + dir * spec.w * 0.23;
+          stage.trim(wx, wy, front + 0.04, 0.3, 0.39, 0.06, trimColor);
+          stage.glow(
+            wx,
+            wy,
+            front + 0.08,
+            0.2,
+            0.28,
+            0.04,
+            floor === 0 && i % 2 ? mixHex(tallow, shadow, 0.45) : tallow,
+          );
+          stage.trim(wx, wy, front + 0.115, 0.035, 0.29, 0.025, roofDark);
+          stage.trim(wx, wy, front + 0.115, 0.21, 0.035, 0.025, roofDark);
+          stage.trim(wx, wy - 0.22, front + 0.1, 0.36, 0.07, 0.16, snowShade);
+          if ((i + floor) % 3 === 0) {
+            stage.trim(wx + dir * 0.22, wy, front + 0.07, 0.1, 0.38, 0.05, roofDark);
+          }
+        }
+      }
+      // Ground-floor doors and shopfronts vary by house.
+      stage.trim(spec.x, SURFACE_Y + 0.4, front + 0.075, 0.3, 0.7, 0.08, i % 2 ? roofDark : wood);
+      stage.glow(spec.x, SURFACE_Y + 0.52, front + 0.125, 0.16, 0.28, 0.035, tallow);
+      stage.trim(spec.x + 0.1, SURFACE_Y + 0.38, front + 0.14, 0.04, 0.04, 0.025, glow);
+      stage.trim(spec.x, SURFACE_Y + 0.06, front + 0.2, 0.48, 0.12, 0.34, snowShade);
+      if (i === 0 || i === 3 || i === 5) {
+        stage.trim(
+          spec.x,
+          SURFACE_Y + 1.02,
+          front + 0.15,
+          spec.w * 0.84,
+          0.25,
+          0.12,
+          i === 3 ? houseRed : roofDark,
+        );
+        for (let mark = 0; mark < 3; mark++) {
+          stage.trim(
+            spec.x - 0.2 + mark * 0.2,
+            SURFACE_Y + 1.04,
+            front + 0.22,
+            0.09,
+            0.06,
+            0.025,
+            tallow,
+          );
+        }
+      }
+      if (i === 2) {
+        for (const side of [-1, 1]) {
+          stage.trim(spec.x + side * 0.42, SURFACE_Y + 1.6, front + 0.18, 0.18, 0.3, 0.28, wood);
+          stage.trim(spec.x + side * 0.42, SURFACE_Y + 1.8, front + 0.18, 0.22, 0.1, 0.3, houseRed);
+        }
+      }
+      stage.solid(
+        spec.x - spec.w * 0.24,
+        SURFACE_Y + spec.h + 0.52,
+        z - 0.2,
+        0.16,
+        0.62,
+        0.16,
+        i % 2 ? houseRed : roofDark,
+      );
+      stage.trim(
+        spec.x - spec.w * 0.24,
+        SURFACE_Y + spec.h + 0.85,
+        z - 0.2,
+        0.24,
+        0.08,
+        0.24,
+        snow,
+      );
     }
 
-    // ── Secondary: two wooden sailing ships with masts and rigging ──
+    // ── Secondary: clinker-built sailing ships with yards and stepped rigging ──
     const buildShip = (length: number, seed: number): THREE.InstancedMesh => {
       const shipRng = createRng(seed);
       const cells: InstancedVoxel[] = [];
@@ -348,36 +427,92 @@ export class DenmarkNyhavn extends BaseLocation {
       ) => {
         cells.push({ x, y, z, w, h, d, color });
       };
-      push(0, 0.22, 0, length, 0.4, 0.62, wood);
-      push(0, 0.42, 0, length * 0.94, 0.12, 0.5, shade(wood, 1.15));
-      push(length * 0.32, 0.32, 0, 0.5, 0.24, 0.56, shade(wood, 0.85));
-      push(-length * 0.32, 0.32, 0, 0.5, 0.24, 0.56, shade(wood, 0.85));
-      push(length * 0.46, 0.55, 0, 0.4, 0.1, 0.12, snow);
-      // masts + sails + rigging
-      const mastXs = [-length * 0.28, 0, length * 0.3];
-      mastXs.forEach((mastX, mi) => {
-        const mastH = 2.2 + mi * 0.15;
-        push(mastX, 0.5 + mastH / 2, 0, 0.07, mastH, 0.07, wood);
-        push(mastX, 0.55 + mastH * 0.72, 0, 0.5, 0.06, 0.06, wood);
-        if (mi > 0) {
-          push((mastXs[mi - 1] + mastX) / 2, 0.6 + mastH * 0.55, 0, 0.06, 0.06, 0.06, wood);
+      const rope = mixHex(wood, shadow, 0.55);
+      const segments = 9;
+      for (let s = 0; s < segments; s++) {
+        const t = s / (segments - 1);
+        const sx = -length / 2 + t * length;
+        const width = 0.16 + Math.sin(t * Math.PI) * 0.5;
+        const lift = Math.pow(Math.abs(t - 0.5) * 2, 3) * 0.22;
+        push(sx, 0.2 + lift, 0, length / segments + 0.03, 0.3, width, wood);
+        push(sx, 0.39 + lift, 0, length / segments + 0.03, 0.08, width * 0.9, shade(wood, 1.15));
+        for (const side of [-1, 1]) {
+          push(
+            sx,
+            0.32 + lift,
+            side * width * 0.48,
+            length / segments + 0.03,
+            0.055,
+            0.045,
+            shade(wood, 0.72),
+          );
+          push(
+            sx,
+            0.46 + lift,
+            side * width * 0.46,
+            length / segments + 0.03,
+            0.06,
+            0.06,
+            snowShade,
+          );
         }
-        // furled sail with a snow line
-        push(mastX, 0.85 + mastH * 0.52, 0.1, 0.42, 0.9, 0.06, mixHex(snow, shadow, 0.35));
-        push(mastX, 1.32 + mastH * 0.52, 0.12, 0.44, 0.08, 0.08, snow);
+      }
+      push(-length * 0.3, 0.58, 0, length * 0.25, 0.28, 0.48, shade(wood, 0.85));
+      push(-length * 0.3, 0.75, 0, length * 0.28, 0.08, 0.52, snow);
+      push(length * 0.53, 0.62, 0, 0.65, 0.08, 0.08, wood);
+      const mastXs = [-length * 0.25, length * 0.18];
+      mastXs.forEach((mastX, mi) => {
+        const mastH = 2.35 + mi * 0.35;
+        const top = 0.48 + mastH;
+        push(mastX, 0.48 + mastH / 2, 0, 0.075, mastH, 0.075, wood);
+        push(mastX, top + 0.12, 0, 0.045, 0.3, 0.045, shade(wood, 1.1));
+        for (const yard of [0.58, 0.8]) {
+          const yy = 0.48 + mastH * yard;
+          push(mastX, yy, 0, 1.15 - yard * 0.35, 0.065, 0.065, wood);
+          push(mastX, yy - 0.09, 0.03, 0.9 - yard * 0.25, 0.12, 0.12, mixHex(snow, shadow, 0.25));
+          push(mastX, yy - 0.02, 0.04, 0.94 - yard * 0.25, 0.035, 0.13, snow);
+        }
+        // Shrouds and stays are dotted stair-steps, all in the same ship batch.
+        for (const side of [-1, 1]) {
+          for (let r = 0; r < 10; r++) {
+            const t = r / 9;
+            push(
+              mastX + side * (0.08 + t * 0.62),
+              top - 0.18 - t * (mastH - 0.35),
+              side * 0.04,
+              0.035,
+              0.26,
+              0.035,
+              rope,
+            );
+          }
+        }
+        for (let r = 0; r < 9; r++) {
+          const t = r / 8;
+          push(
+            mastX + t * (length * 0.47 - mastX),
+            top - t * (top - 0.68),
+            0,
+            0.2,
+            0.035,
+            0.035,
+            rope,
+          );
+        }
       });
-      // rigging diagonals
-      for (let r = 0; r < 3; r++) {
+      for (let r = 0; r < 10; r++) {
+        const t = r / 9;
         push(
-          -length * 0.28 + (r / 2) * length * 0.58,
-          1.5 + r * 0.1,
-          0.05,
-          0.05,
-          1.5,
-          0.05,
-          mixHex(wood, shadow, 0.4),
+          mastXs[0] + (mastXs[1] - mastXs[0]) * t,
+          2.45 + Math.sin(t * Math.PI) * 0.18,
+          0,
+          0.18,
+          0.035,
+          0.035,
+          rope,
         );
       }
+      push(mastXs[1] + 0.18, 3.0, 0, 0.38, 0.16, 0.035, houseRed);
       const ship = buildInstancedVoxels(cells, { castShadow: true, receiveShadow: true });
       const angle = shipRng.nextFloat(0.08, 0.6);
       const radius = shipRng.nextFloat(6.8, 7.4);
@@ -426,17 +561,49 @@ export class DenmarkNyhavn extends BaseLocation {
     }
     stage.solid(5.4, SURFACE_Y + 0.22, 3.0, 0.5, 0.44, 0.44, wood);
     stage.trim(5.4, SURFACE_Y + 0.45, 3.0, 0.52, 0.05, 0.46, snow);
+    // Iron hoops, mooring cleats and a box-built coil make the dock feel worked in.
+    for (let i = 0; i < 3; i++) {
+      for (const y of [0.12, 0.4]) {
+        stage.trim(3.5 + i * 0.42, SURFACE_Y + y, 3.0 + i * 0.16, 0.37, 0.045, 0.37, roofDark);
+      }
+    }
+    for (const x of [3.6, 5.3]) {
+      stage.solid(x, SURFACE_Y + 0.3, 1.45, 0.18, 0.42, 0.18, roofDark);
+      stage.trim(x, SURFACE_Y + 0.5, 1.45, 0.42, 0.09, 0.14, roofDark);
+      stage.trim(x, SURFACE_Y + 0.57, 1.45, 0.2, 0.05, 0.18, snow);
+    }
+    for (let segment = 0; segment < 8; segment++) {
+      const a = (segment / 8) * TAU;
+      stage.trim(
+        5.25 + Math.cos(a) * 0.28,
+        SURFACE_Y + 0.24,
+        2.25 + Math.sin(a) * 0.28,
+        0.18,
+        0.06,
+        0.08,
+        shade(wood, 1.25),
+        -a,
+      );
+    }
 
-    // ── Local warm lights: two harbour lamps + a warm window spill ──
+    // ── Local warm lights: framed lanterns, fluted posts and warm window spill ──
     const harbourLamp = (x: number, z: number, intensity: number, phase: number): void => {
-      stage.glow(x, SURFACE_Y + 2.0, z, 0.22, 0.26, 0.22, tallow);
+      stage.solid(x, SURFACE_Y + 0.12, z, 0.34, 0.24, 0.34, roofDark);
+      stage.solid(x, SURFACE_Y + 1.03, z, 0.1, 1.9, 0.1, roofDark);
+      stage.trim(x, SURFACE_Y + 0.32, z, 0.2, 0.12, 0.2, shade(roofDark, 1.3));
+      stage.trim(x, SURFACE_Y + 1.78, z, 0.38, 0.09, 0.38, roofDark);
+      stage.glow(x, SURFACE_Y + 2.0, z, 0.24, 0.34, 0.24, tallow);
+      for (const side of [-1, 1]) {
+        stage.trim(x + side * 0.16, SURFACE_Y + 2.0, z, 0.055, 0.42, 0.3, roofDark);
+        stage.trim(x, SURFACE_Y + 2.0, z + side * 0.16, 0.3, 0.42, 0.055, roofDark);
+      }
+      stage.trim(x, SURFACE_Y + 2.23, z, 0.42, 0.09, 0.42, roofDark);
+      stage.trim(x, SURFACE_Y + 2.32, z, 0.26, 0.1, 0.26, roofDark);
+      stage.trim(x, SURFACE_Y + 2.39, z, 0.1, 0.08, 0.1, snow);
       const light = new THREE.PointLight(glow, intensity, 6.5);
       light.position.set(x, SURFACE_Y + 1.95, z);
       this.group.add(light);
       this.flickers.push({ light, base: intensity, speed: 2.2, amp: 0.5, phase });
-      // lamp post
-      stage.solid(x, SURFACE_Y + 1.0, z, 0.1, 2.0, 0.1, roofDark);
-      stage.trim(x, SURFACE_Y + 2.15, z, 0.34, 0.08, 0.34, roofDark);
     };
     harbourLamp(3.9, 1.5, 4.2, 0.3);
     harbourLamp(-4.2, 0.9, 3.4, 2.1);

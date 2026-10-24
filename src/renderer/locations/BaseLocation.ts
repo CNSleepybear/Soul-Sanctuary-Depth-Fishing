@@ -4,7 +4,7 @@
 // v2 art pass responsibilities (docs/art-direction-v2.md §4):
 // - lighting rig: low ambient, a warm/cool key with tight soft shadows, a rim
 //   light, a water glow and a warm hemisphere bounce (always exactly 5 lights);
-// - a 360° far silhouette ring so every camera angle has a background;
+// - floating distant islets and clouds preserve depth without a horizon;
 // - a shared voxel water body, shoreline detail scatter and a soft ground
 //   shadow under the island;
 // - a per-location post grade applied through `setGrade()`.
@@ -124,9 +124,8 @@ export abstract class BaseLocation {
     );
     this.scene.add(this.bottomLight);
 
-    // ── Atmosphere: fog tinted by the location veil colour ──
-    const veil = art.veil ?? theme?.fog ?? 0x0a0a12;
-    this.scene.fog = new THREE.FogExp2(veil, theme?.fogDensity ?? 0.0075);
+    // Depth comes from hand-tinted distant props, never a grey wash over the diorama.
+    this.scene.fog = null;
 
     this.originalBackground = this.scene.background as THREE.Color | null;
     if (theme?.bgColor !== undefined) {
@@ -159,7 +158,7 @@ export abstract class BaseLocation {
     this.sanctuaryWater = new SanctuaryWater(this.data, this.id);
     this.group.add(this.sanctuaryWater.group);
 
-    const shadowDisc = buildGroundShadow({ radius: 6.2, opacity: 0.13 });
+    const shadowDisc = buildGroundShadow({ radius: 5.4, opacity: 0.065 });
     shadowDisc.position.set(0, -1.93, 0);
     this.group.add(shadowDisc);
 

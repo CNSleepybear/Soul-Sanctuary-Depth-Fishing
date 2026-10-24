@@ -36,12 +36,20 @@ export class ParticleSystem {
     this.config = config;
     this.group = new THREE.Group();
 
-    const geo = new THREE.BoxGeometry(0.04, 0.04, 0.04);
+    const geo =
+      config.type === 'rain'
+        ? new THREE.BoxGeometry(0.045, 0.28, 0.045)
+        : new THREE.BoxGeometry(
+            config.type === 'firefly' ? 0.1 : 0.075,
+            config.type === 'snow' ? 0.05 : 0.075,
+            config.type === 'fall_spin' ? 0.04 : 0.075,
+          );
     const mat = new THREE.MeshLambertMaterial({
       color: this.config.color,
       flatShading: true,
       transparent: true,
-      opacity: 0.8,
+      opacity: config.type === 'firefly' ? 0.8 : 0.58,
+      depthWrite: false,
     });
     this.mesh = new THREE.InstancedMesh(geo, mat, this.config.count);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

@@ -246,24 +246,32 @@ export class KyotoJapan extends BaseLocation {
     // ── Landmark: vermilion torii on a stone stair (right 2/3 line) ──
     const tx = 2.7;
     const tz = -3.2;
-    vox(body, tx - 1.8, tz, 0, 0.85, 0.24, 0.85, p.stoneDark);
-    vox(body, tx + 1.8, tz, 0, 0.85, 0.24, 0.85, p.stoneDark);
-    vox(body, tx - 1.8, tz, 0.24, 0.44, 2.95, 0.44, p.red);
-    vox(body, tx + 1.8, tz, 0.24, 0.44, 2.95, 0.44, p.red);
-    vox(body, tx - 1.8, tz, 2.55, 0.56, 0.16, 0.56, p.redDark);
-    vox(body, tx + 1.8, tz, 2.55, 0.56, 0.16, 0.56, p.redDark);
-    // Nuki (lower tie beam) + gakuzuka strut + plaque.
-    vox(body, tx, tz, 2.36, 4.5, 0.26, 0.38, p.red);
-    vox(body, tx, tz, 2.62, 0.42, 0.56, 0.32, p.red);
-    vox(body, tx, tz, 2.82, 0.68, 0.6, 0.22, p.ink);
-    vox(glow, tx, tz, 2.9, 0.2, 0.36, 0.06, p.gold);
-    // Shimaki + kasagi (top lintel), with upturned ends.
-    vox(body, tx, tz, 3.16, 4.9, 0.2, 0.52, p.red);
-    vox(body, tx, tz, 3.36, 5.3, 0.24, 0.66, p.ink);
-    vox(body, tx - 2.62, tz, 3.56, 0.5, 0.2, 0.72, p.ink);
-    vox(body, tx + 2.62, tz, 3.56, 0.5, 0.2, 0.72, p.ink);
-    vox(body, tx - 1.8, tz, 2.71, 0.62, 0.14, 0.62, p.ink);
-    vox(body, tx + 1.8, tz, 2.71, 0.62, 0.14, 0.62, p.ink);
+    for (const side of [-1, 1]) {
+      const lx = tx + side * 1.8;
+      vox(body, lx, tz, 0, 0.94, 0.16, 0.94, p.stoneDark);
+      vox(body, lx, tz, 0.16, 0.72, 0.14, 0.72, p.stoneLight);
+      vox(body, lx, tz, 0.3, 0.52, 0.34, 0.52, p.ink);
+      vox(body, lx, tz, 0.64, 0.43, 2.55, 0.43, p.red);
+      vox(body, lx, tz, 2.48, 0.58, 0.15, 0.58, p.redDark);
+      vox(body, lx, tz, 2.72, 0.66, 0.15, 0.66, p.ink);
+      vox(body, lx + side * 0.25, tz, 2.27, 0.18, 0.36, 0.48, p.redDark);
+    }
+    // The tie beam projects beyond the columns; the centred plaque has a fine gilt frame.
+    vox(body, tx, tz, 2.36, 4.75, 0.25, 0.38, p.red);
+    vox(body, tx, tz, 2.61, 0.4, 0.58, 0.32, p.redDark);
+    vox(body, tx, tz + 0.19, 2.78, 0.72, 0.66, 0.1, p.gold);
+    vox(body, tx, tz + 0.25, 2.83, 0.58, 0.54, 0.06, p.ink);
+    vox(glow, tx, tz + 0.29, 2.91, 0.08, 0.32, 0.035, p.gold);
+    vox(glow, tx + 0.1, tz + 0.29, 3.0, 0.22, 0.055, 0.035, p.gold);
+    vox(glow, tx - 0.08, tz + 0.29, 2.84, 0.18, 0.05, 0.035, p.gold);
+    // A stepped, gently swept kasagi gives the gate its unmistakable silhouette.
+    vox(body, tx, tz, 3.14, 4.9, 0.18, 0.54, p.red);
+    for (let i = -5; i <= 5; i++) {
+      const lift = Math.pow(Math.abs(i) / 5, 2) * 0.22;
+      const width = i === -5 || i === 5 ? 0.58 : 0.54;
+      vox(body, tx + i * 0.5, tz, 3.33 + lift, width, 0.22, 0.68, p.ink);
+      vox(body, tx + i * 0.5, tz, 3.29 + lift, width, 0.07, 0.73, p.redDark);
+    }
     aoPatch(tx, tz, 5.0, 1.6);
 
     // Stone stair descending towards the pond.
@@ -338,95 +346,129 @@ export class KyotoJapan extends BaseLocation {
     }
     aoPatch(pondX, pondZ, 5.4, 4.2);
 
-    // Arch bridge: deck follows a sine arch, vermilion railings on both sides.
+    // A continuous dark arch under individual planks makes the bridge read at miniature scale.
     const span = 4.0;
     const segs = 9;
     for (let i = 0; i <= segs; i++) {
       const t = i / segs;
       const bx = pondX - span / 2 + span * t;
       const archY = 0.2 + Math.sin(t * Math.PI) * 0.4;
-      vox(body, bx, pondZ, archY, (span / segs) * 1.12, 0.14, 1.05, p.wood);
-      if (i > 0 && i < segs) {
-        vox(body, bx, pondZ + 0.46, archY + 0.14, 0.1, 0.52, 0.1, p.red);
-        vox(body, bx, pondZ - 0.46, archY + 0.14, 0.1, 0.52, 0.1, p.red);
-        vox(body, bx, pondZ + 0.46, archY + 0.58, (span / segs) * 1.1, 0.08, 0.1, p.redDark);
-        vox(body, bx, pondZ - 0.46, archY + 0.58, (span / segs) * 1.1, 0.08, 0.1, p.redDark);
+      const plankW = (span / segs) * 1.12;
+      vox(body, bx, pondZ, archY - 0.13, plankW, 0.16, 0.88, p.woodDark);
+      vox(
+        body,
+        bx,
+        pondZ,
+        archY,
+        plankW * 0.92,
+        0.14,
+        1.05,
+        i % 2 ? p.wood : mixHex(p.wood, p.red, 0.18),
+      );
+      for (const side of [-1, 1]) {
+        const rz = pondZ + side * 0.48;
+        vox(body, bx, rz, archY + 0.62, plankW * 1.08, 0.1, 0.12, p.redDark);
+        vox(body, bx, rz, archY + 0.34, plankW * 1.06, 0.07, 0.08, p.red);
+        if (i > 0 && i < segs) {
+          vox(body, bx, rz, archY + 0.12, 0.11, 0.54, 0.11, p.red);
+          vox(body, bx, rz, archY + 0.72, 0.18, 0.09, 0.18, p.redDark);
+        }
       }
       if (i === 0 || i === segs) {
-        vox(body, bx, pondZ, 0, 0.34, 0.22, 1.25, p.stoneDark);
+        vox(body, bx, pondZ, 0, 0.42, 0.24, 1.3, p.stoneDark);
+        vox(body, bx, pondZ, 0.24, 0.54, 0.1, 1.18, p.stoneLight);
       }
     }
-    // Lantern glints reflected in the pond (emissive dashes).
     vox(glow, pondX - 1.1, pondZ + 0.5, 0.08, 0.5, 0.02, 0.12, mixHex(p.glow, p.water, 0.25));
     vox(glow, pondX + 0.4, pondZ - 0.4, 0.08, 0.3, 0.02, 0.1, mixHex(p.glow, p.water, 0.35));
 
-    // ── Cherry grove (four trees, three canopy tones) ──
+    // ── Cherry grove: stepped boughs, shadowed undergrowth and layered blossom pads ──
     const cherry = (cx: number, cz: number, s: number): void => {
       const h = 3.2 * s;
-      const tw = 0.3 * s;
-      vox(body, cx, cz, 0, tw, h * 0.52, tw, p.trunk);
-      const branches: [number, number, number][] = [
-        [0.34, 0.12, 0.3],
-        [-0.3, -0.16, -0.28],
-        [0.1, -0.34, 0.22],
+      const tw = 0.32 * s;
+      vox(body, cx, cz, 0, tw * 1.3, 0.22 * s, tw * 1.3, p.trunk);
+      vox(body, cx, cz, 0.22 * s, tw, h * 0.48, tw, p.trunk);
+      const branches: [number, number][] = [
+        [0.85, 0.25],
+        [-0.72, -0.42],
+        [0.18, -0.78],
       ];
-      branches.forEach(([bx, bz, rot]) => {
-        vox(body, cx + bx * s, cz + bz * s, h * 0.4, 0.13 * s, h * 0.36, 0.13 * s, p.trunk, rot);
+      branches.forEach(([dx, dz]) => {
+        for (let step = 0; step < 3; step++) {
+          const t = (step + 1) / 3;
+          vox(
+            body,
+            cx + dx * t * s,
+            cz + dz * t * s,
+            h * (0.35 + t * 0.22),
+            (0.42 - step * 0.08) * s,
+            0.14 * s,
+            (0.34 - step * 0.06) * s,
+            p.trunk,
+            Math.atan2(dz, dx),
+          );
+        }
       });
       const clusters: [number, number, number, number, number][] = [
-        [0, 0, 0, 2.25, 0.72],
-        [0.72, 0.42, 0.28, 1.6, 0.56],
-        [-0.68, -0.34, 0.3, 1.5, 0.52],
-        [0.24, -0.56, 0.62, 1.35, 0.46],
-        [-0.34, 0.58, 0.12, 1.3, 0.5],
-        [0.62, 0.1, -0.62, 1.15, 0.4],
+        [0, 0, 0.18, 1.85, 0.58],
+        [0.78, 0.34, 0.28, 1.5, 0.5],
+        [-0.72, -0.38, 0.3, 1.45, 0.48],
+        [0.18, -0.72, 0.62, 1.25, 0.46],
+        [-0.3, 0.68, 0.42, 1.3, 0.46],
+        [0.72, -0.38, -0.08, 1.05, 0.38],
       ];
       clusters.forEach(([ox, oz, oy, cw, ch], i) => {
-        const color = i % 3 === 0 ? p.sakuraLight : i % 3 === 1 ? p.sakura : p.sakuraDeep;
+        const y = h * 0.58 + oy * s;
         vox(
           body,
           cx + ox * s,
           cz + oz * s,
-          h * 0.56 + oy * s,
-          cw * s,
-          ch * s,
-          cw * 0.9 * s,
-          color,
-          rng.nextFloat(-0.2, 0.2),
+          y - 0.12 * s,
+          cw * 0.88 * s,
+          ch * 0.42 * s,
+          cw * 0.78 * s,
+          p.sakuraDeep,
         );
-      });
-      for (let i = 0; i < 7; i++) {
-        const a = rng.nextFloat(0, Math.PI * 2);
-        const r = rng.nextFloat(0.75, 1.35) * s;
         vox(
           body,
-          cx + Math.cos(a) * r,
-          cz + Math.sin(a) * r,
-          h * 0.62 + rng.nextFloat(-0.1, 0.55) * s,
-          0.16,
-          0.1,
-          0.16,
-          i % 2 ? p.sakuraLight : p.sakura,
-          rng.nextFloat(0, Math.PI),
+          cx + ox * s,
+          cz + oz * s,
+          y + ch * 0.22 * s,
+          cw * s,
+          ch * 0.68 * s,
+          cw * 0.86 * s,
+          i % 2 ? p.sakura : p.sakuraLight,
+          ((i % 3) - 1) * 0.12,
         );
-      }
-      // Fallen petal carpet.
-      for (let i = 0; i < 10; i++) {
-        const a = rng.nextFloat(0, Math.PI * 2);
-        const r = rng.nextFloat(0.3, 1.5) * s;
+        if (i < 4) {
+          vox(
+            body,
+            cx + (ox + 0.18) * s,
+            cz + (oz - 0.12) * s,
+            y + ch * 0.75 * s,
+            cw * 0.42 * s,
+            0.16 * s,
+            cw * 0.38 * s,
+            p.sakuraLight,
+          );
+        }
+      });
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 + s;
+        const r = (0.65 + (i % 3) * 0.24) * s;
         vox(
           body,
           cx + Math.cos(a) * r,
           cz + Math.sin(a) * r,
           0,
-          0.16,
-          0.02,
-          0.12,
-          rng.chance(0.5) ? p.sakura : p.sakuraLight,
-          rng.nextFloat(0, Math.PI),
+          0.22,
+          0.025,
+          0.13,
+          i % 2 ? p.sakura : p.sakuraLight,
+          a,
         );
       }
-      aoPatch(cx, cz, 3.2 * s, 3.0 * s);
+      aoPatch(cx, cz, 3.0 * s, 2.8 * s);
     };
     cherry(-3.9, -1.0, 1.15);
     cherry(-4.25, 1.7, 0.95);

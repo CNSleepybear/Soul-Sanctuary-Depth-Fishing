@@ -194,10 +194,14 @@ export class Bobber {
       batch(
         ring,
         [
-          { w: 1.0, h: 0.03125, d: 0.0625, color: ringColor, x: 0, y: 0, z: 0.5 },
-          { w: 1.0, h: 0.03125, d: 0.0625, color: ringColor, x: 0, y: 0, z: -0.5 },
-          { w: 0.0625, h: 0.03125, d: 1.0, color: ringColor, x: 0.5, y: 0, z: 0 },
-          { w: 0.0625, h: 0.03125, d: 1.0, color: ringColor, x: -0.5, y: 0, z: 0 },
+          { w: 0.34, h: 0.03125, d: 0.0625, color: ringColor, x: -0.28, y: 0, z: 0.5 },
+          { w: 0.24, h: 0.03125, d: 0.0625, color: ringColor, x: 0.34, y: 0, z: 0.5 },
+          { w: 0.3, h: 0.03125, d: 0.0625, color: ringColor, x: 0.22, y: 0, z: -0.5 },
+          { w: 0.22, h: 0.03125, d: 0.0625, color: ringColor, x: -0.36, y: 0, z: -0.5 },
+          { w: 0.0625, h: 0.03125, d: 0.34, color: ringColor, x: 0.5, y: 0, z: -0.26 },
+          { w: 0.0625, h: 0.03125, d: 0.22, color: ringColor, x: 0.5, y: 0, z: 0.36 },
+          { w: 0.0625, h: 0.03125, d: 0.28, color: ringColor, x: -0.5, y: 0, z: 0.24 },
+          { w: 0.0625, h: 0.03125, d: 0.22, color: ringColor, x: -0.5, y: 0, z: -0.36 },
         ],
         mat,
       );

@@ -227,9 +227,10 @@ export class EgyptValleyKings extends BaseLocation {
       );
     }
 
-    // ── Landmark: stepped Great Pyramid on the right third ──
+    // ── Landmark: stepped sandstone courses with staggered joints and erosion ──
     const pyramidX = 2.3;
     const pyramidZ = -2.9;
+    const mortar = mixHex(sandstoneDark, veil, 0.2);
     stage.trim(pyramidX, SURFACE_Y + 0.12, pyramidZ, 3.5, 0.24, 3.5, sandstoneDark);
     let tierY = SURFACE_Y + 0.24;
     const tiers = [
@@ -244,70 +245,147 @@ export class EgyptValleyKings extends BaseLocation {
       const tier = tiers[i];
       const color = i % 2 === 0 ? sandstone : mixHex(sandstone, sandstoneLight, 0.35);
       stage.solid(pyramidX, tierY + tier.h / 2, pyramidZ, tier.w, tier.h, tier.w, color);
-      if (i > 0) {
+      for (let course = 1; course <= 2; course++) {
+        const y = tierY + (tier.h * course) / 3;
+        stage.trim(pyramidX, y, pyramidZ + tier.w / 2 + 0.012, tier.w * 0.96, 0.025, 0.025, mortar);
+        stage.trim(pyramidX + tier.w / 2 + 0.012, y, pyramidZ, 0.025, 0.025, tier.w * 0.96, mortar);
+      }
+      const joints = Math.max(2, Math.floor(tier.w / 0.42));
+      for (let j = 1; j < joints; j++) {
+        const offset = -tier.w / 2 + (j * tier.w) / joints;
+        const y = tierY + tier.h * (j % 2 === 0 ? 0.34 : 0.67);
         stage.trim(
-          pyramidX,
-          tierY + tier.h / 2,
-          pyramidZ + tier.w / 2 + 0.01,
-          tier.w * 0.9,
-          0.06,
-          0.05,
-          turquoise,
+          pyramidX + offset,
+          y,
+          pyramidZ + tier.w / 2 + 0.016,
+          0.022,
+          tier.h * 0.28,
+          0.025,
+          mortar,
+        );
+        stage.trim(
+          pyramidX + tier.w / 2 + 0.016,
+          y,
+          pyramidZ + offset,
+          0.025,
+          tier.h * 0.28,
+          0.022,
+          mortar,
+        );
+      }
+      if (i < 4) {
+        stage.trim(
+          pyramidX - tier.w * 0.32,
+          tierY + 0.06,
+          pyramidZ + tier.w / 2 + 0.07,
+          tier.w * 0.28,
+          0.12,
+          0.22,
+          mixHex(sand, sandstoneLight, 0.3),
         );
       }
       tierY += tier.h;
     }
-    // gold pyramidion + glow seam
     stage.glow(pyramidX, tierY + 0.16, pyramidZ, 0.34, 0.32, 0.34, gold);
     stage.trim(pyramidX, tierY + 0.04, pyramidZ, 0.5, 0.1, 0.5, gold);
 
-    // ── Secondary: smaller companion pyramid ──
+    // ── Secondary: companion pyramid with exposed horizontal bedding ──
     const smallX = -3.2;
     const smallZ = -2.6;
-    stage.solid(smallX, SURFACE_Y + 0.4, smallZ, 2.2, 0.8, 2.2, sandstone);
-    stage.solid(
-      smallX,
-      SURFACE_Y + 1.1,
-      smallZ,
-      1.6,
-      0.7,
-      1.6,
-      mixHex(sandstone, sandstoneLight, 0.3),
-    );
-    stage.solid(smallX, SURFACE_Y + 1.7, smallZ, 1.0, 0.6, 1.0, sandstone);
+    const smallTiers = [
+      { y: 0.4, w: 2.2, h: 0.8 },
+      { y: 1.1, w: 1.6, h: 0.7 },
+      { y: 1.7, w: 1.0, h: 0.6 },
+    ];
+    smallTiers.forEach((tier, i) => {
+      stage.solid(
+        smallX,
+        SURFACE_Y + tier.y,
+        smallZ,
+        tier.w,
+        tier.h,
+        tier.w,
+        i === 1 ? sandstoneLight : sandstone,
+      );
+      for (const offset of [-0.22, 0.22]) {
+        stage.trim(
+          smallX,
+          SURFACE_Y + tier.y + offset,
+          smallZ + tier.w / 2 + 0.012,
+          tier.w * 0.92,
+          0.025,
+          0.025,
+          mortar,
+        );
+      }
+    });
     stage.glow(smallX, SURFACE_Y + 2.18, smallZ, 0.3, 0.3, 0.3, gold);
 
-    // ── Secondary: obelisk pair with turquoise/gold bands ──
+    // ── Obelisks: carved glyph columns and small gold pyramidions ──
     const obelisk = (x: number, z: number, h: number): void => {
-      stage.solid(x, SURFACE_Y + 0.24, z, 0.56, 0.4, 0.56, sandstoneDark);
+      stage.solid(x, SURFACE_Y + 0.2, z, 0.64, 0.32, 0.64, sandstoneDark);
+      stage.trim(x, SURFACE_Y + 0.39, z, 0.52, 0.08, 0.52, sandstoneLight);
       let y = SURFACE_Y + 0.44;
-      const segs = 5;
+      const segs = 6;
       for (let i = 0; i < segs; i++) {
-        const w = 0.44 - i * 0.05;
+        const w = 0.44 - i * 0.043;
         const segH = h / segs;
         stage.solid(x, y + segH / 2, z, w, segH, w, i % 2 === 0 ? sandstone : sandstoneLight);
-        if (i % 2 === 1) {
-          stage.trim(x, y + segH / 2, z + w / 2 + 0.01, w * 0.8, 0.1, 0.04, turquoise);
-        }
+        stage.trim(
+          x,
+          y + segH / 2,
+          z + w / 2 + 0.015,
+          0.055,
+          segH * 0.42,
+          0.025,
+          i % 3 === 0 ? turquoise : sandstoneDark,
+        );
+        stage.trim(x + 0.07, y + segH * 0.34, z + w / 2 + 0.016, 0.1, 0.035, 0.025, gold);
         y += segH;
       }
-      stage.glow(x, y + 0.18, z, 0.2, 0.34, 0.2, gold);
+      stage.glow(x, y + 0.16, z, 0.2, 0.3, 0.2, gold);
     };
     obelisk(-1.9, -2.9, 2.6);
     obelisk(-1.1, -2.9, 2.2);
 
-    // ── Secondary: colonnade with painted bands ──
+    // ── Papyrus-bud colonnade: drum seams, painted necks and flared capitals ──
     const column = (x: number, z: number): void => {
-      stage.solid(x, SURFACE_Y + 0.09, z, 0.46, 0.18, 0.46, sandstoneDark);
-      stage.solid(x, SURFACE_Y + 0.18 + 1.0, z, 0.34, 2.0, 0.34, sandstone);
-      stage.trim(x, SURFACE_Y + 1.3, z + 0.18, 0.36, 0.12, 0.06, turquoise);
-      stage.trim(x, SURFACE_Y + 0.8, z + 0.18, 0.36, 0.1, 0.06, gold);
-      stage.solid(x, SURFACE_Y + 2.3, z, 0.48, 0.2, 0.48, sandstoneDark);
+      stage.solid(x, SURFACE_Y + 0.08, z, 0.56, 0.16, 0.56, sandstoneDark);
+      stage.trim(x, SURFACE_Y + 0.2, z, 0.44, 0.1, 0.44, sandstoneLight);
+      for (let drum = 0; drum < 5; drum++) {
+        stage.solid(
+          x,
+          SURFACE_Y + 0.42 + drum * 0.34,
+          z,
+          0.32,
+          0.33,
+          0.32,
+          drum % 2 === 0 ? sandstone : mixHex(sandstone, sandstoneLight, 0.2),
+        );
+        stage.trim(x, SURFACE_Y + 0.28 + drum * 0.34, z, 0.35, 0.035, 0.35, sandstoneDark);
+      }
+      stage.trim(x, SURFACE_Y + 1.96, z, 0.37, 0.12, 0.37, turquoise);
+      stage.trim(x, SURFACE_Y + 2.08, z, 0.4, 0.08, 0.4, gold);
+      stage.solid(x, SURFACE_Y + 2.19, z, 0.46, 0.16, 0.46, sandstoneLight);
+      stage.solid(x, SURFACE_Y + 2.32, z, 0.58, 0.12, 0.58, sandstone);
+      stage.trim(x, SURFACE_Y + 2.42, z, 0.64, 0.09, 0.64, sandstoneDark);
     };
     column(-0.1, -3.1);
     column(0.5, -3.1);
     column(1.1, -3.1);
-    stage.solid(0.5, SURFACE_Y + 2.56, -3.1, 1.55, 0.18, 0.5, sandstoneDark);
+    stage.solid(0.5, SURFACE_Y + 2.57, -3.1, 1.85, 0.2, 0.66, sandstoneDark);
+    stage.trim(0.5, SURFACE_Y + 2.59, -2.755, 1.7, 0.08, 0.04, turquoise);
+    for (let i = 0; i < 7; i++) {
+      stage.trim(
+        -0.2 + i * 0.23,
+        SURFACE_Y + 2.58,
+        -2.72,
+        0.055,
+        0.12 + (i % 2) * 0.05,
+        0.025,
+        gold,
+      );
+    }
 
     // ── Secondary: Sphinx in front of the pyramid ──
     const sphinxX = 2.6;
@@ -332,45 +410,76 @@ export class EgyptValleyKings extends BaseLocation {
       stage.solid(sphinxX + 0.36, SURFACE_Y + 0.2, sphinxZ + legZ, 0.22, 0.4, 0.34, sandstoneDark);
     }
 
-    // ── Secondary: palms in a group ──
+    // ── Date palms: ringed leaning trunks and three-step drooping fronds ──
     const palm = (x: number, z: number, height: number, seed: number): void => {
       const palmRng = createRng(seed);
-      const segs = 5;
+      const segs = 7;
       let px = 0;
       for (let i = 0; i < segs; i++) {
-        px += 0.07;
+        px += 0.045 + i * 0.004;
+        const y = SURFACE_Y + (height / segs) * (i + 0.5);
         stage.solid(
           x + px,
-          SURFACE_Y + (height / segs) * (i + 0.5),
+          y,
           z,
-          0.26,
+          0.25 - i * 0.012,
           height / segs,
-          0.26,
-          palmTrunk,
+          0.25 - i * 0.012,
+          i % 2 === 0 ? palmTrunk : shade(palmTrunk, 1.14),
         );
-      }
-      for (let i = 0; i < 7; i++) {
-        const angle = (i / 7) * TAU + 0.3;
         stage.trim(
-          x + px + Math.cos(angle) * 0.5,
-          SURFACE_Y + height + 0.1,
-          z + Math.sin(angle) * 0.5,
-          palmRng.nextFloat(0.7, 0.95),
-          0.08,
-          0.24,
-          i % 2 === 0 ? palmLeaf : shade(palmLeaf, 0.85),
-          angle,
+          x + px,
+          y - (height / segs) * 0.42,
+          z,
+          0.28 - i * 0.012,
+          0.055,
+          0.28 - i * 0.012,
+          shade(palmTrunk, 0.72),
         );
       }
-      stage.trim(
-        x + px,
-        SURFACE_Y + height - 0.1,
-        z,
-        0.22,
-        0.16,
-        0.22,
-        mixHex(palmTrunk, gold, 0.4),
-      );
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * TAU + 0.3;
+        const length = palmRng.nextFloat(0.9, 1.15);
+        const color = i % 2 === 0 ? palmLeaf : shade(palmLeaf, 0.82);
+        for (let segment = 0; segment < 3; segment++) {
+          const radius = 0.28 + segment * length * 0.32;
+          const y = SURFACE_Y + height + 0.18 - segment * segment * 0.11;
+          stage.trim(
+            x + px + Math.cos(angle) * radius,
+            y,
+            z + Math.sin(angle) * radius,
+            length * (segment === 2 ? 0.42 : 0.48),
+            0.07,
+            0.24 - segment * 0.045,
+            segment === 2 ? shade(color, 0.9) : color,
+            angle,
+          );
+          if (segment < 2) {
+            stage.trim(
+              x + px + Math.cos(angle) * (radius + 0.08),
+              y - 0.04,
+              z + Math.sin(angle) * (radius + 0.08),
+              0.4 - segment * 0.08,
+              0.045,
+              0.075,
+              color,
+              angle + Math.PI / 2,
+            );
+          }
+        }
+      }
+      for (let i = 0; i < 5; i++) {
+        const angle = (i / 5) * TAU;
+        stage.trim(
+          x + px + Math.cos(angle) * 0.18,
+          SURFACE_Y + height - 0.18 - (i % 2) * 0.1,
+          z + Math.sin(angle) * 0.18,
+          0.13,
+          0.18,
+          0.13,
+          mixHex(palmTrunk, gold, 0.55),
+        );
+      }
     };
     palm(-4.1, 0.9, 2.6, hashSeed('eg:palm1'));
     palm(-3.4, 1.5, 2.1, hashSeed('eg:palm2'));
@@ -517,27 +626,47 @@ export class EgyptValleyKings extends BaseLocation {
     }
     this.motes.push(new MoteField(embers, { additive: true, opacity: 0.7 }));
 
-    // 3) Heat shimmer above the sand.
+    // Low horizontal refraction bands sit below taller, slowly rising heat veils.
     const shimmer: MoteSpec[] = [];
-    for (let i = 0; i < 14; i++) {
+    for (let i = 0; i < 22; i++) {
       const angle = rng.nextFloat(0, TAU);
-      const radius = rng.nextFloat(2.5, 6.4);
+      const radius = rng.nextFloat(3.2, 6.4);
       shimmer.push({
         x: Math.cos(angle) * radius,
-        y: SURFACE_Y + rng.nextFloat(0.4, 1.6),
+        y: SURFACE_Y + rng.nextFloat(0.22, 0.9),
         z: Math.sin(angle) * radius,
-        w: rng.nextFloat(0.5, 1.1),
-        h: 0.03,
-        d: 0.1,
-        color: mixHex(veil, 0xf0d8a8, 0.4),
+        w: rng.nextFloat(0.65, 1.35),
+        h: 0.025,
+        d: 0.08,
+        color: mixHex(key, 0xffe4ae, 0.5),
         mode: 'orbit',
-        speed: rng.nextFloat(0.12, 0.3),
-        amp: rng.nextFloat(0.2, 0.5),
+        speed: rng.nextFloat(0.12, 0.26),
+        amp: rng.nextFloat(0.16, 0.38),
         phase: rng.next(),
         span: 1,
       });
     }
-    this.motes.push(new MoteField(shimmer, { additive: true, opacity: 0.28 }));
+    this.motes.push(new MoteField(shimmer, { additive: true, opacity: 0.14 }));
+    const heatVeils: MoteSpec[] = [];
+    for (let i = 0; i < 14; i++) {
+      const angle = rng.nextFloat(Math.PI * 0.85, Math.PI * 1.85);
+      const radius = rng.nextFloat(3.2, 5.8);
+      heatVeils.push({
+        x: Math.cos(angle) * radius,
+        y: SURFACE_Y + 0.25,
+        z: Math.sin(angle) * radius,
+        w: rng.nextFloat(0.35, 0.75),
+        h: rng.nextFloat(0.32, 0.65),
+        d: 0.035,
+        color: mixHex(veil, 0xf7d9a0, 0.72),
+        mode: 'rise',
+        speed: rng.nextFloat(0.08, 0.16),
+        amp: rng.nextFloat(0.08, 0.22),
+        phase: rng.next(),
+        span: 1.65,
+      });
+    }
+    this.motes.push(new MoteField(heatVeils, { additive: true, opacity: 0.075 }));
 
     for (const mote of this.motes) this.group.add(mote.mesh);
   }

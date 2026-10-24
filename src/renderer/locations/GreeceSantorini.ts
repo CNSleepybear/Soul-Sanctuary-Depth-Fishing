@@ -249,28 +249,98 @@ export class GreeceSantorini extends BaseLocation {
     stage.trim(millX - 0.2, SURFACE_Y + 1.6, millZ + 0.58, 0.06, 0.38, 0.05, domeBlue);
     stage.trim(millX + 0.2, SURFACE_Y + 1.6, millZ + 0.58, 0.06, 0.38, 0.05, domeBlue);
 
-    // ── Landmark secondary: blue-domed chapel with bell tower ──
+    // ── Blue-domed chapel: ribbed dome, recessed door and an open bell gable ──
     const churchX = 1.7;
     const churchZ = -2.9;
-    stage.solid(churchX, SURFACE_Y + 0.8, churchZ, 1.5, 1.6, 1.5, white);
-    stage.trim(churchX, SURFACE_Y + 1.6, churchZ, 1.6, 0.1, 1.6, whiteShade);
-    stage.solid(churchX, SURFACE_Y + 1.7, churchZ, 1.2, 0.3, 1.2, domeBlue);
-    stage.solid(churchX, SURFACE_Y + 2.0, churchZ, 0.92, 0.3, 0.92, domeBlue);
-    stage.solid(churchX, SURFACE_Y + 2.3, churchZ, 0.62, 0.3, 0.62, domeBlue);
-    stage.glow(churchX, SURFACE_Y + 2.62, churchZ, 0.12, 0.34, 0.12, glow);
-    // arched door + windows
-    stage.glow(churchX, SURFACE_Y + 0.72, churchZ + 0.77, 0.3, 0.56, 0.06, glow);
-    stage.trim(churchX - 0.26, SURFACE_Y + 0.72, churchZ + 0.79, 0.08, 0.7, 0.05, domeBlue);
-    stage.trim(churchX + 0.26, SURFACE_Y + 0.72, churchZ + 0.79, 0.08, 0.7, 0.05, domeBlue);
-    stage.trim(churchX, SURFACE_Y + 1.06, churchZ + 0.79, 0.6, 0.08, 0.05, domeBlue);
-    // bell tower beside the chapel
-    const bellX = 2.85;
-    const bellZ = -2.4;
-    stage.solid(bellX, SURFACE_Y + 1.1, bellZ, 0.42, 2.2, 0.42, white);
-    stage.trim(bellX, SURFACE_Y + 2.24, bellZ, 0.62, 0.14, 0.62, whiteShade);
-    stage.trim(bellX, SURFACE_Y + 2.38, bellZ, 0.5, 0.1, 0.5, domeBlue);
-    stage.glow(bellX, SURFACE_Y + 1.95, bellZ + 0.22, 0.24, 0.34, 0.06, glow);
-    stage.solid(bellX, SURFACE_Y + 2.5, bellZ, 0.16, 0.2, 0.16, domeBlue);
+    const bronze = mixHex(glow, 0x9a6a32, 0.62);
+    stage.trim(churchX, SURFACE_Y + 0.09, churchZ, 1.72, 0.18, 1.72, whiteShade);
+    stage.solid(churchX, SURFACE_Y + 0.84, churchZ, 1.5, 1.6, 1.5, white);
+    stage.trim(churchX, SURFACE_Y + 1.62, churchZ, 1.64, 0.12, 1.64, whiteShade);
+    stage.solid(churchX, SURFACE_Y + 1.75, churchZ, 1.26, 0.18, 1.26, shade(domeBlue, 0.82));
+    const domeTiers = [
+      { y: 1.91, w: 1.18, h: 0.2 },
+      { y: 2.1, w: 0.98, h: 0.2 },
+      { y: 2.29, w: 0.74, h: 0.2 },
+      { y: 2.46, w: 0.48, h: 0.16 },
+      { y: 2.59, w: 0.24, h: 0.12 },
+    ];
+    domeTiers.forEach((tier, i) => {
+      stage.solid(
+        churchX,
+        SURFACE_Y + tier.y,
+        churchZ,
+        tier.w,
+        tier.h,
+        tier.w,
+        i % 2 === 0 ? domeBlue : mixHex(domeBlue, fill, 0.18),
+      );
+      if (i < 4) {
+        stage.trim(
+          churchX,
+          SURFACE_Y + tier.y,
+          churchZ + tier.w / 2 + 0.015,
+          0.055,
+          tier.h * 0.9,
+          0.03,
+          mixHex(domeBlue, white, 0.28),
+        );
+        stage.trim(
+          churchX + tier.w / 2 + 0.015,
+          SURFACE_Y + tier.y,
+          churchZ,
+          0.03,
+          tier.h * 0.9,
+          0.055,
+          mixHex(domeBlue, white, 0.28),
+        );
+      }
+    });
+    stage.glow(churchX, SURFACE_Y + 2.83, churchZ, 0.07, 0.38, 0.07, glow);
+    stage.glow(churchX, SURFACE_Y + 2.89, churchZ, 0.28, 0.07, 0.07, glow);
+    stage.glow(churchX, SURFACE_Y + 0.72, churchZ + 0.765, 0.32, 0.58, 0.05, shade(glow, 0.65));
+    stage.solid(churchX, SURFACE_Y + 0.65, churchZ + 0.805, 0.26, 0.65, 0.05, domeBlue);
+    stage.trim(churchX, SURFACE_Y + 1.05, churchZ + 0.81, 0.36, 0.16, 0.06, domeBlue);
+    for (const side of [-1, 1]) {
+      stage.trim(
+        churchX + side * 0.27,
+        SURFACE_Y + 0.73,
+        churchZ + 0.8,
+        0.08,
+        0.74,
+        0.07,
+        whiteShade,
+      );
+      stage.trim(
+        churchX + side * 0.51,
+        SURFACE_Y + 1.1,
+        churchZ + 0.79,
+        0.22,
+        0.38,
+        0.05,
+        domeBlue,
+      );
+      stage.trim(churchX + side * 0.51, SURFACE_Y + 1.1, churchZ + 0.825, 0.04, 0.34, 0.035, white);
+    }
+    stage.trim(churchX, SURFACE_Y + 1.18, churchZ + 0.8, 0.62, 0.08, 0.07, whiteShade);
+    stage.trim(churchX, SURFACE_Y + 0.27, churchZ + 0.9, 0.72, 0.12, 0.34, whiteShade);
+
+    const bellX = 2.95;
+    const bellZ = -2.35;
+    stage.trim(bellX, SURFACE_Y + 0.14, bellZ, 0.76, 0.28, 0.7, whiteShade);
+    stage.solid(bellX, SURFACE_Y + 0.85, bellZ, 0.5, 1.25, 0.46, white);
+    stage.trim(bellX, SURFACE_Y + 1.49, bellZ, 0.68, 0.14, 0.62, whiteShade);
+    for (const side of [-1, 1]) {
+      stage.solid(bellX + side * 0.25, SURFACE_Y + 1.9, bellZ, 0.14, 0.78, 0.42, white);
+    }
+    stage.trim(bellX, SURFACE_Y + 2.31, bellZ, 0.72, 0.14, 0.64, whiteShade);
+    stage.solid(bellX, SURFACE_Y + 2.47, bellZ, 0.56, 0.18, 0.52, domeBlue);
+    stage.solid(bellX, SURFACE_Y + 2.63, bellZ, 0.34, 0.14, 0.32, domeBlue);
+    stage.trim(bellX, SURFACE_Y + 1.9, bellZ + 0.23, 0.34, 0.5, 0.035, shade(shadow, 0.8));
+    stage.trim(bellX, SURFACE_Y + 2.08, bellZ + 0.27, 0.08, 0.25, 0.08, bronze);
+    stage.trim(bellX, SURFACE_Y + 1.91, bellZ + 0.28, 0.28, 0.18, 0.18, bronze);
+    stage.trim(bellX, SURFACE_Y + 1.8, bellZ + 0.28, 0.36, 0.07, 0.22, shade(bronze, 1.18));
+    stage.glow(bellX, SURFACE_Y + 2.88, bellZ, 0.06, 0.34, 0.06, glow);
+    stage.glow(bellX, SURFACE_Y + 2.93, bellZ, 0.25, 0.06, 0.06, glow);
 
     // ── Secondary: whitewashed cubic houses ──
     const house = (x: number, z: number, w: number, h: number, d: number, seed: number): void => {
@@ -298,80 +368,128 @@ export class GreeceSantorini extends BaseLocation {
           houseRng.chance(0.5) ? glow : shade(glow, 0.45),
         );
       }
-      // bougainvillea cascading over one wall
-      const wallX = x + (houseRng.chance(0.5) ? -w / 2 : w / 2);
-      const count = 8 + houseRng.nextInt(0, 4);
-      for (let i = 0; i < count; i++) {
-        stage.trim(
-          wallX + houseRng.nextFloat(-0.12, 0.12),
-          SURFACE_Y + houseRng.nextFloat(0.4, h * 0.85),
-          z + houseRng.nextFloat(-d / 2, d / 2),
-          0.14,
-          0.12,
-          0.14,
-          houseRng.chance(0.6) ? bougainvillea : bougainvilleaDeep,
-        );
+      // A woody vine supports clustered bracts and small green leaves.
+      const side = houseRng.chance(0.5) ? -1 : 1;
+      const wallX = x + side * (w / 2 + 0.025);
+      const vine = mixHex(wood, grass, 0.35);
+      stage.trim(wallX, SURFACE_Y + h * 0.48, z - d * 0.2, 0.055, h * 0.88, 0.055, vine);
+      for (let branch = 0; branch < 4; branch++) {
+        const y = SURFACE_Y + 0.3 + branch * h * 0.2;
+        const bz = z - d * 0.18 + (branch % 2 === 0 ? -1 : 1) * d * 0.18;
+        stage.trim(wallX, y, bz, 0.06, 0.055, d * 0.52, vine);
+        for (let cluster = 0; cluster < 3; cluster++) {
+          const fz = bz + (cluster - 1) * d * 0.18;
+          const color = houseRng.chance(0.65) ? bougainvillea : bougainvilleaDeep;
+          stage.trim(wallX + side * 0.07, y + 0.07, fz, 0.2, 0.17, 0.2, color);
+          stage.trim(
+            wallX + side * 0.11,
+            y + 0.18,
+            fz + 0.06,
+            0.12,
+            0.12,
+            0.13,
+            mixHex(color, glow, 0.15),
+          );
+          stage.trim(
+            wallX + side * 0.04,
+            y - 0.08,
+            fz - 0.08,
+            0.16,
+            0.08,
+            0.18,
+            shade(grass, 0.75),
+          );
+        }
       }
-      // rooftop railing
       for (let i = 0; i < 3; i++) {
-        stage.trim(
-          x - w / 2 + 0.12 + i * (w / 2 - 0.06),
-          SURFACE_Y + h + 0.2,
-          z + d / 2 - 0.08,
-          0.06,
-          0.22,
-          0.06,
-          whiteShade,
-        );
+        const rx = x - w / 2 + 0.12 + i * (w / 2 - 0.06);
+        stage.trim(rx, SURFACE_Y + h + 0.2, z + d / 2 - 0.08, 0.06, 0.22, 0.06, whiteShade);
       }
+      stage.trim(x, SURFACE_Y + h + 0.31, z + d / 2 - 0.08, w, 0.055, 0.055, whiteShade);
+      stage.solid(
+        x - w * 0.25,
+        SURFACE_Y + h + 0.17,
+        z,
+        0.22,
+        0.24,
+        0.22,
+        mixHex(bougainvillea, 0x8a4a34, 0.65),
+      );
+      stage.trim(x - w * 0.25, SURFACE_Y + h + 0.34, z, 0.24, 0.16, 0.24, grass);
     };
     house(3.5, -1.2, 1.1, 1.3, 1.0, hashSeed('gr:h1'));
     house(0.0, -3.4, 1.0, 1.1, 0.9, hashSeed('gr:h2'));
     house(-0.9, -1.1, 0.9, 1.0, 0.9, hashSeed('gr:h3'));
 
-    // ── Secondary: wide white stairs up to the chapel terrace ──
-    for (let i = 0; i < 6; i++) {
+    // ── Continuous masonry stairs, tiled treads and stepped blue handrails ──
+    for (let i = 0; i < 7; i++) {
+      const height = 0.12 * (i + 1);
+      const z = 0.42 - i * 0.31;
       stage.solid(
         2.4,
-        SURFACE_Y + 0.1 + i * 0.12,
-        0.2 - i * 0.34,
+        SURFACE_Y + height / 2,
+        z,
         1.3,
-        0.14,
-        0.36,
+        height,
+        0.34,
         i % 2 === 0 ? white : whiteShade,
       );
+      stage.trim(2.4, SURFACE_Y + height + 0.025, z + 0.02, 1.34, 0.05, 0.32, white);
+      for (const side of [-1, 1]) {
+        stage.solid(
+          2.4 + side * 0.72,
+          SURFACE_Y + height / 2 + 0.1,
+          z,
+          0.14,
+          height + 0.2,
+          0.34,
+          whiteShade,
+        );
+        stage.trim(2.4 + side * 0.72, SURFACE_Y + height + 0.38, z, 0.075, 0.48, 0.075, domeBlue);
+        stage.trim(
+          2.4 + side * 0.72,
+          SURFACE_Y + height + 0.61,
+          z - 0.12,
+          0.075,
+          0.065,
+          0.42,
+          domeBlue,
+        );
+      }
     }
-    // terrace edge + blue railing posts
-    stage.solid(2.4, SURFACE_Y + 0.36, -1.9, 1.7, 0.2, 0.9, white);
+    stage.solid(2.4, SURFACE_Y + 0.66, -1.9, 1.75, 0.24, 0.9, white);
+    stage.trim(2.4, SURFACE_Y + 0.8, -1.9, 1.82, 0.06, 0.94, whiteShade);
     for (let i = 0; i < 3; i++) {
-      stage.trim(1.7 + i * 0.7, SURFACE_Y + 1.35, -1.5, 0.07, 0.7, 0.07, domeBlue);
+      stage.trim(1.7 + i * 0.7, SURFACE_Y + 1.12, -1.5, 0.07, 0.62, 0.07, domeBlue);
     }
-    stage.trim(2.4, SURFACE_Y + 1.65, -1.5, 1.5, 0.07, 0.07, domeBlue);
+    stage.trim(2.4, SURFACE_Y + 1.42, -1.5, 1.5, 0.07, 0.07, domeBlue);
 
-    // ── Foreground frame: whitewashed planter wall + pots + bougainvillea ──
+    // ── Foreground planter, flower clusters and a tiny terrace tea setting ──
     const planterX = 4.6;
     const planterZ = 2.2;
     stage.solid(planterX, SURFACE_Y + 0.28, planterZ, 1.4, 0.56, 0.5, white);
     stage.trim(planterX, SURFACE_Y + 0.58, planterZ, 1.44, 0.08, 0.54, whiteShade);
-    for (let i = 0; i < 10; i++) {
-      stage.trim(
-        planterX - 0.6 + rng.nextFloat(0, 1.2),
-        SURFACE_Y + 0.68 + rng.nextFloat(0, 0.36),
-        planterZ + rng.nextFloat(-0.2, 0.2),
-        0.16,
-        0.14,
-        0.16,
-        rng.chance(0.55) ? bougainvillea : bougainvilleaDeep,
-      );
+    for (let i = 0; i < 12; i++) {
+      const x = planterX - 0.6 + rng.nextFloat(0, 1.2);
+      const y = SURFACE_Y + 0.68 + rng.nextFloat(0, 0.36);
+      const z = planterZ + rng.nextFloat(-0.2, 0.2);
+      stage.trim(x, y - 0.08, z, 0.18, 0.09, 0.18, shade(grass, 0.78));
+      stage.trim(x, y, z, 0.19, 0.15, 0.18, rng.chance(0.55) ? bougainvillea : bougainvilleaDeep);
+      if (i % 3 === 0)
+        stage.trim(x + 0.08, y + 0.1, z, 0.12, 0.12, 0.12, mixHex(bougainvillea, glow, 0.2));
     }
-    // terracotta pots
     for (let i = 0; i < 3; i++) {
       const px = 3.5 + i * 0.34;
       stage.solid(px, SURFACE_Y + 0.2, 2.8, 0.3, 0.4, 0.3, mixHex(bougainvillea, 0x8a4a34, 0.6));
+      stage.trim(px, SURFACE_Y + 0.43, 2.8, 0.34, 0.07, 0.34, whiteShade);
       stage.trim(px, SURFACE_Y + 0.55, 2.8, 0.22, 0.2, 0.22, grass);
     }
+    stage.trim(3.5, SURFACE_Y + 0.47, 1.65, 0.56, 0.09, 0.48, whiteShade);
+    stage.trim(3.5, SURFACE_Y + 0.23, 1.65, 0.09, 0.46, 0.09, domeBlue);
+    stage.glow(3.42, SURFACE_Y + 0.57, 1.65, 0.09, 0.12, 0.09, glow);
+    stage.trim(3.65, SURFACE_Y + 0.55, 1.65, 0.16, 0.05, 0.16, white);
 
-    // ── Animated sail boat on the Aegean ──
+    // ── White-sailed caïque: tapered hull and stair-stepped triangular canvas ──
     const boatCells: InstancedVoxel[] = [];
     const pushBoat = (
       x: number,
@@ -384,12 +502,40 @@ export class GreeceSantorini extends BaseLocation {
     ) => {
       boatCells.push({ x, y, z, w, h, d, color });
     };
-    pushBoat(0, 0.1, 0, 1.4, 0.18, 0.4, white);
-    pushBoat(0, 0.22, 0, 1.1, 0.1, 0.32, whiteShade);
-    pushBoat(0, 1.0, 0, 0.07, 1.6, 0.07, wood);
-    pushBoat(0.04, 1.05, 0, 0.9, 0.06, 0.06, wood);
-    pushBoat(0.05, 1.35, 0, 0.8, 0.7, 0.04, white);
-    pushBoat(-0.4, 0.7, 0, 0.5, 0.5, 0.04, whiteShade);
+    pushBoat(-0.05, 0.08, 0, 1.45, 0.14, 0.32, shade(domeBlue, 0.68));
+    pushBoat(-0.05, 0.18, 0, 1.25, 0.12, 0.42, white);
+    pushBoat(0.68, 0.24, 0, 0.28, 0.12, 0.28, whiteShade);
+    pushBoat(-0.76, 0.22, 0, 0.18, 0.14, 0.34, whiteShade);
+    for (const side of [-1, 1]) pushBoat(-0.05, 0.29, side * 0.22, 1.3, 0.055, 0.055, domeBlue);
+    pushBoat(0, 1.12, 0, 0.065, 1.85, 0.065, wood);
+    pushBoat(0.38, 0.63, 0, 0.85, 0.055, 0.055, wood);
+    for (let row = 0; row < 7; row++) {
+      const width = 0.9 - row * 0.115;
+      pushBoat(
+        0.06 + width / 2,
+        0.76 + row * 0.18,
+        0,
+        width,
+        0.17,
+        0.035,
+        row % 3 === 0 ? whiteShade : white,
+      );
+    }
+    for (let row = 0; row < 5; row++) {
+      const width = 0.58 - row * 0.1;
+      pushBoat(
+        -0.06 - width / 2,
+        0.7 + row * 0.18,
+        0,
+        width,
+        0.17,
+        0.035,
+        row % 2 === 0 ? white : whiteShade,
+      );
+    }
+    pushBoat(0.02, 2.08, 0, 0.3, 0.12, 0.035, domeBlue);
+    pushBoat(-0.35, 0.45, 0, 0.14, 0.24, 0.14, whiteShade);
+    pushBoat(-0.35, 0.63, 0, 0.12, 0.12, 0.12, mixHex(glow, 0x8a6a50, 0.55));
     const boat = buildInstancedVoxels(boatCells, { castShadow: true, receiveShadow: true });
     boat.position.set(6.9, -1.9, 0.9);
     boat.rotation.y = 0.45;

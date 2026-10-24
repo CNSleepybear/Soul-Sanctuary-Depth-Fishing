@@ -279,23 +279,83 @@ export class UKThames extends BaseLocation {
     aoPatch(sx, sz, 1.4, 1.4);
     const wx = -3.7;
     const wz = 1.0;
-    vox(body, wx, wz, 0, 2.2, 2.4, 1.8, p.brick);
-    vox(body, wx, wz, 2.4, 2.4, 0.18, 2.0, p.brickDark);
+    vox(body, wx, wz, 0, 2.2, 2.4, 1.8, p.brickDark);
+    // Raised brick courses and pale quoins catch the rain light on the quay-facing wall.
+    for (let row = 0; row < 9; row++) {
+      for (let col = 0; col < 5; col++) {
+        const ox = -0.88 + col * 0.44 + (row % 2) * 0.08;
+        if (ox > 0.95 || (row >= 4 && row <= 6 && col > 0 && col < 4)) continue;
+        vox(
+          body,
+          wx + ox,
+          wz + 0.91,
+          0.12 + row * 0.25,
+          0.38,
+          0.18,
+          0.055,
+          (row + col) % 3 ? p.brick : p.brickLight,
+        );
+      }
+    }
+    for (const side of [-1, 1]) {
+      for (let row = 0; row < 6; row++) {
+        vox(
+          body,
+          wx + side * 1.08,
+          wz + 0.94,
+          row * 0.4,
+          0.22,
+          0.26,
+          0.12,
+          row % 2 ? p.stone : p.stoneLight,
+        );
+      }
+    }
+    vox(body, wx, wz, 2.4, 2.5, 0.16, 2.08, p.ironDark);
+    for (let tier = 0; tier < 4; tier++) {
+      vox(
+        body,
+        wx,
+        wz,
+        2.56 + tier * 0.15,
+        2.28,
+        0.16,
+        1.9 - tier * 0.42,
+        tier % 2 ? p.iron : p.ironDark,
+      );
+    }
     for (let i = 0; i < 3; i++) {
-      vox(glow, wx - 0.6 + i * 0.6, wz + 0.92, 1.2, 0.34, 0.5, 0.05, p.warm);
-      vox(body, wx - 0.6 + i * 0.6, wz + 0.94, 1.74, 0.44, 0.06, 0.08, p.stoneLight);
+      const fx = wx - 0.6 + i * 0.6;
+      vox(body, fx, wz + 0.94, 1.12, 0.48, 0.66, 0.09, p.stone);
+      vox(glow, fx, wz + 1.0, 1.19, 0.34, 0.5, 0.045, p.warm);
+      vox(body, fx, wz + 1.035, 1.19, 0.045, 0.52, 0.035, p.ironDark);
+      vox(body, fx, wz + 1.035, 1.4, 0.36, 0.045, 0.035, p.ironDark);
+      vox(body, fx, wz + 1.0, 1.04, 0.54, 0.09, 0.16, p.stoneLight);
     }
     vox(body, wx + 0.1, wz - 0.95, 0.2, 0.9, 0.7, 0.12, p.woodDark);
     aoPatch(wx, wz, 2.6, 2.3);
 
-    // Red phone box + post box.
+    // K6 phone box: fine red framing around luminous, mullioned glass.
     const bx = -2.0;
     const bz = -0.4;
-    vox(body, bx, bz, 0, 0.72, 1.5, 0.72, p.red);
-    vox(glow, bx, bz + 0.37, 0.45, 0.46, 0.86, 0.05, p.warm);
-    vox(body, bx, bz, 1.5, 0.8, 0.12, 0.8, p.redDark);
-    vox(body, bx, bz, 1.62, 0.4, 0.1, 0.4, p.red);
-    vox(glow, bx, bz, 1.62, 0.22, 0.06, 0.22, p.warm);
+    vox(body, bx, bz, 0, 0.78, 0.14, 0.78, p.redDark);
+    vox(glow, bx, bz, 0.2, 0.56, 1.18, 0.56, mixHex(p.warm, p.glass, 0.52));
+    for (const sx2 of [-1, 1]) {
+      for (const sz2 of [-1, 1]) {
+        vox(body, bx + sx2 * 0.32, bz + sz2 * 0.32, 0.14, 0.1, 1.36, 0.1, p.red);
+      }
+    }
+    for (const y of [0.42, 0.78, 1.14]) {
+      vox(body, bx, bz + 0.37, y, 0.66, 0.065, 0.07, p.redDark);
+      vox(body, bx + 0.37, bz, y, 0.07, 0.065, 0.66, p.redDark);
+    }
+    vox(body, bx, bz + 0.37, 0.22, 0.06, 1.18, 0.07, p.redDark);
+    vox(body, bx + 0.37, bz, 0.22, 0.07, 1.18, 0.06, p.redDark);
+    vox(body, bx, bz, 1.38, 0.78, 0.22, 0.78, p.red);
+    vox(glow, bx, bz + 0.4, 1.44, 0.48, 0.1, 0.04, p.warm);
+    vox(body, bx, bz, 1.6, 0.84, 0.1, 0.84, p.redDark);
+    vox(body, bx, bz, 1.7, 0.62, 0.1, 0.62, p.red);
+    vox(body, bx, bz, 1.8, 0.34, 0.09, 0.34, p.redDark);
     aoPatch(bx, bz, 1.2, 1.2);
     const px = -1.15;
     const pz = 0.25;
@@ -318,11 +378,18 @@ export class UKThames extends BaseLocation {
     lamp(0.5, 0.3);
     lamp(4.0, -0.9);
 
-    // ── Foreground frame: quay railing, umbrella, bollards ──
-    for (let i = 0; i < 4; i++) {
-      vox(body, 3.9 + i * 0.42, 2.6 - i * 0.05, 0, 0.12, 0.9, 0.12, p.ironDark, -0.1 * i);
+    // ── Foreground frame: masonry quay, finialed ironwork, umbrella and bollards ──
+    vox(body, 4.55, 2.48, 0, 2.35, 0.22, 0.42, p.brickDark, -0.05);
+    vox(body, 4.55, 2.48, 0.22, 2.42, 0.1, 0.48, p.stoneLight, -0.05);
+    for (let i = 0; i < 7; i++) {
+      const rx = 3.55 + i * 0.34;
+      const rz = 2.68 - i * 0.017;
+      vox(body, rx, rz, 0.32, 0.075, 0.78, 0.075, p.ironDark);
+      vox(body, rx, rz, 1.1, 0.13, 0.13, 0.13, p.iron);
+      if (i % 2 === 0) vox(body, rx, rz, 0.48, 0.14, 0.42, 0.14, p.iron);
     }
-    vox(body, 4.5, 2.45, 0.72, 1.75, 0.08, 0.08, p.iron, -0.05);
+    vox(body, 4.57, 2.63, 0.96, 2.2, 0.075, 0.075, p.iron, -0.05);
+    vox(body, 4.57, 2.63, 0.58, 2.2, 0.055, 0.055, p.iron, -0.05);
     // Umbrella: pole + two canopy tiers.
     const ux = 4.55;
     const uz = 1.35;
@@ -461,13 +528,16 @@ export class UKThames extends BaseLocation {
     shafts.position.set(1.0, SURFACE + 0.6, -2.2);
     this.group.add(shafts);
 
-    this.group.add(
-      buildGlowOrb({
-        color: glowColor,
-        size: 0.4,
-        position: new THREE.Vector3(2.6, SURFACE + 5.3, -3.2),
-      }),
-    );
+    const halos: [number, number, number, number][] = [
+      [2.6, SURFACE + 5.3, -3.2, 0.4],
+      [0.5, SURFACE + 3.25, 0.3, 0.34],
+      [4.0, SURFACE + 3.25, -0.9, 0.3],
+    ];
+    halos.forEach(([x, y, z, size]) => {
+      this.group.add(
+        buildGlowOrb({ color: glowColor, size, position: new THREE.Vector3(x, y, z) }),
+      );
+    });
 
     const addLight = (
       color: number,

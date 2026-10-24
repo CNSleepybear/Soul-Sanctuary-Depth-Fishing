@@ -157,7 +157,7 @@ const COMPOSITE_FRAGMENT = /* glsl */ `
     color += dither / 255.0;
     color = clamp(color, 0.0, 1.0);
     float bloomAlpha = clamp(dot(bloom, vec3(0.333)) * 0.6, 0.0, 1.0);
-    float alpha = clamp(alphaIn + bloomAlpha, 0.0, 1.0);
+    float alpha = alphaIn < 0.001 ? 0.0 : clamp(alphaIn + bloomAlpha * alphaIn, 0.0, 1.0);
     gl_FragColor = vec4(color * alpha, alpha);
   }
 `;

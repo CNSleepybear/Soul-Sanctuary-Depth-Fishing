@@ -268,7 +268,7 @@ export class ItalyVenice extends BaseLocation {
       );
     }
 
-    // ── Secondary: terraced row of four palazzi ──
+    // ── Secondary: individually detailed ochre, rose and cream palazzi ──
     const palazzo = (
       x: number,
       z: number,
@@ -279,44 +279,129 @@ export class ItalyVenice extends BaseLocation {
       seed: number,
     ): void => {
       const houseRng = createRng(seed);
+      const front = z + d / 2;
       stage.solid(x, SURFACE_Y + h / 2, z, w, h, d, body);
-      // plaster footing + roof cornice + steep terracotta cap
       stage.trim(x, SURFACE_Y + 0.12, z, w + 0.08, 0.24, d + 0.08, stone);
-      stage.trim(x, SURFACE_Y + h + 0.06, z, w + 0.16, 0.12, d + 0.16, tile);
+      stage.trim(x, SURFACE_Y + 0.32, front + 0.025, w, 0.1, 0.06, mixHex(body, rioWater, 0.28));
+      stage.trim(x, SURFACE_Y + h + 0.06, z, w + 0.2, 0.12, d + 0.2, tile);
+      stage.trim(x, SURFACE_Y + h - 0.12, front + 0.05, w + 0.08, 0.1, 0.12, cream);
       stage.solid(x, SURFACE_Y + h + 0.2, z, w - 0.1, 0.2, d - 0.1, shade(tile, 0.86));
       stage.solid(x - w * 0.24, SURFACE_Y + h + 0.36, z - d * 0.18, 0.16, 0.44, 0.16, tile);
-      // canal facade (+z): glowing windows with dark shutters
+      stage.trim(x - w * 0.24, SURFACE_Y + h + 0.6, z - d * 0.18, 0.24, 0.08, 0.24, stoneLight);
+      // Corner quoins, floor strings and a rainwater pipe break up the plaster mass.
+      for (const side of [-1, 1]) {
+        for (let q = 0; q < Math.floor(h / 0.34); q++) {
+          stage.trim(
+            x + side * (w / 2 - 0.06),
+            SURFACE_Y + 0.42 + q * 0.34,
+            front + 0.035,
+            q % 2 ? 0.16 : 0.22,
+            0.12,
+            0.07,
+            stoneLight,
+          );
+        }
+      }
+      for (let floor = 1; floor < Math.floor(h / 0.8); floor++) {
+        stage.trim(
+          x,
+          SURFACE_Y + floor * 0.8,
+          front + 0.025,
+          w,
+          0.055,
+          0.06,
+          mixHex(body, cream, 0.45),
+        );
+      }
+      stage.trim(
+        x + w / 2 - 0.04,
+        SURFACE_Y + h * 0.45,
+        front + 0.1,
+        0.045,
+        h * 0.9,
+        0.045,
+        shade(terracotta, 0.7),
+      );
       const cols = Math.max(2, Math.round(w / 0.5));
       const rows = Math.max(2, Math.floor(h / 0.85));
       for (let c = 0; c < cols; c++) {
         for (let r = 0; r < rows; r++) {
           const wx = x - w / 2 + (w / (cols + 1)) * (c + 1);
-          const wy = SURFACE_Y + 0.55 + r * 0.78;
+          const wy = SURFACE_Y + 0.65 + r * 0.78;
           if (wy > SURFACE_Y + h - 0.4) continue;
           const lit = houseRng.chance(0.62);
-          stage.glow(wx, wy, z + d / 2 + 0.02, 0.2, 0.3, 0.06, lit ? glow : dark);
-          stage.trim(wx - 0.15, wy, z + d / 2 + 0.04, 0.07, 0.34, 0.05, shade(accent, 0.4));
-          stage.trim(wx + 0.15, wy, z + d / 2 + 0.04, 0.07, 0.34, 0.05, shade(accent, 0.4));
+          const shutterColor = r % 2 ? shade(accent, 0.4) : mixHex(wood, rioWater, 0.25);
+          stage.trim(wx, wy, front + 0.025, 0.32, 0.45, 0.06, stoneLight);
+          stage.glow(wx, wy, front + 0.065, 0.2, 0.32, 0.055, lit ? glow : dark);
+          stage.trim(wx, wy + 0.22, front + 0.065, 0.22, 0.1, 0.055, stoneLight);
+          stage.trim(wx, wy + 0.28, front + 0.065, 0.12, 0.06, 0.055, stoneLight);
+          stage.trim(wx, wy, front + 0.1, 0.035, 0.32, 0.025, dark);
+          stage.trim(wx, wy - 0.22, front + 0.1, 0.38, 0.07, 0.14, stoneLight);
+          for (const side of [-1, 1]) {
+            stage.trim(wx + side * 0.23, wy, front + 0.07, 0.1, 0.4, 0.05, shutterColor);
+            stage.trim(
+              wx + side * 0.23,
+              wy,
+              front + 0.105,
+              0.11,
+              0.035,
+              0.025,
+              mixHex(shutterColor, key, 0.18),
+            );
+          }
         }
       }
-      // little balcony on the piano nobile
       if (w > 1.05) {
-        stage.trim(x, SURFACE_Y + h * 0.54, z + d / 2 + 0.1, w * 0.68, 0.06, 0.24, stoneLight);
-        for (let b = 0; b < 4; b++) {
+        const balconyY = SURFACE_Y + h * 0.54;
+        stage.trim(x, balconyY, front + 0.17, w * 0.74, 0.09, 0.36, stoneLight);
+        stage.trim(x, balconyY + 0.34, front + 0.33, w * 0.74, 0.06, 0.06, dark);
+        for (let b = 0; b < 6; b++) {
           stage.trim(
-            x - w * 0.3 + b * (w * 0.2),
-            SURFACE_Y + h * 0.54 + 0.16,
-            z + d / 2 + 0.19,
-            0.05,
-            0.3,
-            0.05,
+            x - w * 0.33 + b * (w * 0.132),
+            balconyY + 0.17,
+            front + 0.33,
+            0.045,
+            0.34,
+            0.045,
             dark,
           );
         }
+        for (const side of [-1, 1]) {
+          stage.trim(x + side * w * 0.26, balconyY - 0.12, front + 0.11, 0.1, 0.24, 0.18, stone);
+        }
       }
-      // awning stripes over the ground-floor door
-      stage.trim(x, SURFACE_Y + 0.52, z + d / 2 + 0.14, 0.7, 0.06, 0.3, cream);
-      stage.trim(x, SURFACE_Y + 0.52, z + d / 2 + 0.15, 0.7, 0.05, 0.12, terracotta);
+      // Water-level door, striped canopy and worn entry steps.
+      stage.trim(x, SURFACE_Y + 0.43, front + 0.045, 0.42, 0.74, 0.08, wood);
+      stage.glow(x, SURFACE_Y + 0.54, front + 0.09, 0.22, 0.36, 0.04, glow);
+      stage.trim(x, SURFACE_Y + 0.09, front + 0.2, 0.64, 0.14, 0.38, stone);
+      for (let stripe = 0; stripe < 5; stripe++) {
+        stage.trim(
+          x - 0.32 + stripe * 0.16,
+          SURFACE_Y + 0.9,
+          front + 0.22,
+          0.16,
+          0.07,
+          0.42,
+          stripe % 2 ? cream : terracotta,
+        );
+      }
+      if (x < -3) {
+        // A small shrine and laundry give the end house its own identity.
+        stage.trim(x, SURFACE_Y + h - 0.48, front + 0.08, 0.34, 0.44, 0.1, stoneLight);
+        stage.glow(x, SURFACE_Y + h - 0.48, front + 0.14, 0.16, 0.24, 0.05, glow);
+        stage.trim(x, SURFACE_Y + h * 0.72, front + 0.38, w * 0.8, 0.025, 0.025, wood);
+        for (let cloth = 0; cloth < 3; cloth++) {
+          stage.trim(
+            x - 0.38 + cloth * 0.36,
+            SURFACE_Y + h * 0.72 - 0.18,
+            front + 0.38,
+            0.22,
+            0.34,
+            0.035,
+            cloth % 2 ? cream : rose,
+          );
+        }
+      }
     };
     palazzo(-4.0, -1.7, 1.5, 2.4, 1.35, terracotta, hashSeed('it:p1'));
     palazzo(-2.65, -2.5, 1.2, 3.0, 1.3, ochre, hashSeed('it:p2'));
@@ -378,44 +463,50 @@ export class ItalyVenice extends BaseLocation {
     stage.glow(campanileX, SURFACE_Y + 4.48, campanileZ, 0.06, 0.32, 0.06, glow);
     stage.glow(campanileX, SURFACE_Y + 4.52, campanileZ, 0.22, 0.06, 0.06, glow);
 
-    // ── Secondary: stone arch bridge over the rio ──
+    // ── Secondary: a true open arch with stepped voussoirs and curved parapets ──
     const bridgeX = 3.5;
     const bridgeZ = 0.2;
     const span = 2.2;
-    for (let i = 0; i <= 8; i++) {
-      const t = i / 8;
+    for (let i = 0; i <= 10; i++) {
+      const t = i / 10;
       const bx = bridgeX - span / 2 + span * t;
-      const by = SURFACE_Y + 0.14 + Math.sin(t * Math.PI) * 0.42;
-      stage.solid(bx, by, bridgeZ, span / 8 + 0.02, 0.12, 0.9, stoneLight);
-      if (i > 0 && i < 8 && i % 2 === 0) {
-        stage.trim(bx, by + 0.3, bridgeZ + 0.4, 0.09, 0.5, 0.09, stone);
-        stage.trim(bx, by + 0.3, bridgeZ - 0.4, 0.09, 0.5, 0.09, stone);
+      const rise = Math.sin(t * Math.PI) * 0.46;
+      const by = SURFACE_Y + 0.18 + rise;
+      stage.solid(bx, by, bridgeZ, span / 10 + 0.025, 0.13, 0.96, stoneLight);
+      stage.solid(bx, by - 0.17, bridgeZ, span / 10 + 0.02, 0.22, 0.82, i % 2 ? stone : stoneLight);
+      for (const side of [-1, 1]) {
+        stage.trim(
+          bx,
+          by + 0.19,
+          bridgeZ + side * 0.43,
+          span / 10 + 0.02,
+          0.28,
+          0.12,
+          i % 2 ? stoneLight : stone,
+        );
+        stage.trim(bx, by + 0.37, bridgeZ + side * 0.43, span / 10 + 0.035, 0.09, 0.17, stoneLight);
+        if (i % 2 === 0) {
+          stage.trim(bx, by + 0.18, bridgeZ + side * 0.43, 0.12, 0.42, 0.16, stone);
+        }
       }
     }
-    stage.trim(bridgeX, SURFACE_Y + 0.92, bridgeZ + 0.4, span, 0.08, 0.08, stone);
-    stage.trim(bridgeX, SURFACE_Y + 0.92, bridgeZ - 0.4, span, 0.08, 0.08, stone);
-    // steps up to the arch at both ends
-    for (let i = 0; i < 3; i++) {
-      stage.solid(
-        bridgeX - span / 2 - 0.12 - i * 0.16,
-        SURFACE_Y + 0.1 + i * 0.04,
-        bridgeZ,
-        0.18,
-        0.12,
-        1.0,
-        stone,
-      );
-      stage.solid(
-        bridgeX + span / 2 + 0.12 + i * 0.16,
-        SURFACE_Y + 0.1 + i * 0.04,
-        bridgeZ,
-        0.18,
-        0.12,
-        1.0,
-        stone,
-      );
+    for (const side of [-1, 1]) {
+      stage.solid(bridgeX + side * 1.03, SURFACE_Y + 0.12, bridgeZ, 0.36, 0.38, 1.05, stone);
+      stage.trim(bridgeX + side * 1.03, SURFACE_Y + 0.35, bridgeZ, 0.44, 0.1, 1.12, stoneLight);
     }
-    // stone banks of the rio
+    for (let i = 0; i < 3; i++) {
+      for (const side of [-1, 1]) {
+        stage.solid(
+          bridgeX + side * (span / 2 + 0.12 + i * 0.16),
+          SURFACE_Y + 0.12 - i * 0.035,
+          bridgeZ,
+          0.18,
+          0.14,
+          1.0,
+          i % 2 ? stoneLight : stone,
+        );
+      }
+    }
     for (let i = 0; i < 12; i++) {
       const bx = bridgeX - 1.7 + i * 0.32;
       stage.trim(bx, SURFACE_Y + 0.03, bridgeZ - 0.62, 0.3, 0.1, 0.16, stone);
@@ -456,7 +547,7 @@ export class ItalyVenice extends BaseLocation {
     mooringPole(0.42, 7.02, 1.6, hashSeed('it:pole2'));
     mooringPole(0.64, 6.92, 1.95, hashSeed('it:pole3'));
 
-    // ── Landmark secondary: gondola with a gondolier, bobbing in the lagoon ──
+    // ── Landmark secondary: tapered gondola, ferro, seats and gondolier ──
     const gondolaCells: InstancedVoxel[] = [];
     const pushGondola = (
       x: number,
@@ -470,18 +561,51 @@ export class ItalyVenice extends BaseLocation {
       gondolaCells.push({ x, y, z, w, h, d, color });
     };
     const hull = shade(veil, 0.55);
-    pushGondola(0, 0.1, 0, 2.5, 0.18, 0.24, hull);
-    pushGondola(0, 0.24, 0, 1.9, 0.14, 0.2, mixHex(hull, dark, 0.4));
-    pushGondola(1.18, 0.32, 0, 0.22, 0.5, 0.1, hull);
-    pushGondola(1.3, 0.62, 0, 0.18, 0.2, 0.08, cream);
-    pushGondola(-1.18, 0.28, 0, 0.22, 0.4, 0.1, hull);
-    pushGondola(0, 0.3, 0, 0.8, 0.1, 0.22, mixHex(accent, key, 0.3));
-    // gondolier: striped shirt, head, straw hat, oar
-    pushGondola(-0.78, 0.62, 0, 0.18, 0.38, 0.18, cream);
-    pushGondola(-0.78, 0.68, 0.02, 0.19, 0.2, 0.2, shade(accent, 1.1));
-    pushGondola(-0.78, 0.9, 0, 0.16, 0.16, 0.16, mixHex(key, 0x8a6a50, 0.5));
-    pushGondola(-0.78, 1.01, 0, 0.24, 0.06, 0.24, mixHex(ochre, 0x3a2e20, 0.4));
-    pushGondola(-1.1, 0.5, 0, 0.05, 0.05, 1.1, wood);
+    for (let i = 0; i < 11; i++) {
+      const t = i / 10;
+      const x = -1.35 + t * 2.7;
+      const width = 0.12 + Math.sin(t * Math.PI) * 0.32;
+      const lift = Math.pow(Math.abs(t - 0.5) * 2, 3) * 0.18;
+      pushGondola(x, 0.1 + lift, 0, 0.3, 0.16, width, hull);
+      for (const side of [-1, 1]) {
+        pushGondola(x, 0.25 + lift, side * width * 0.46, 0.3, 0.18, 0.07, hull);
+        pushGondola(x, 0.36 + lift, side * width * 0.46, 0.3, 0.045, 0.08, mixHex(hull, key, 0.16));
+      }
+    }
+    pushGondola(0, 0.2, 0, 1.9, 0.08, 0.24, mixHex(hull, dark, 0.4));
+    pushGondola(1.35, 0.45, 0, 0.14, 0.62, 0.1, hull);
+    pushGondola(1.43, 0.78, 0, 0.18, 0.22, 0.08, cream);
+    for (let tooth = 0; tooth < 4; tooth++) {
+      pushGondola(1.52, 0.64 + tooth * 0.09, 0, 0.18, 0.035, 0.06, cream);
+    }
+    pushGondola(-1.3, 0.4, 0, 0.16, 0.48, 0.1, hull);
+    pushGondola(0.25, 0.39, 0, 0.62, 0.12, 0.34, mixHex(accent, key, 0.3));
+    pushGondola(0.25, 0.53, -0.14, 0.62, 0.24, 0.08, mixHex(accent, key, 0.3));
+    pushGondola(-0.25, 0.34, 0, 0.4, 0.08, 0.32, wood);
+    pushGondola(0.9, 0.52, 0, 0.18, 0.28, 0.18, wood);
+    pushGondola(0.9, 0.7, 0, 0.22, 0.08, 0.22, glow);
+    // Striped shirt, neckerchief, ribboned straw hat and long oar.
+    pushGondola(-0.82, 0.64, 0, 0.2, 0.4, 0.2, cream);
+    for (let stripe = 0; stripe < 3; stripe++) {
+      pushGondola(-0.82, 0.52 + stripe * 0.12, 0.105, 0.21, 0.045, 0.025, shade(accent, 1.1));
+    }
+    pushGondola(-0.82, 0.86, 0, 0.22, 0.08, 0.22, shade(accent, 0.8));
+    pushGondola(-0.82, 0.97, 0, 0.16, 0.16, 0.16, mixHex(key, 0x8a6a50, 0.5));
+    pushGondola(-0.82, 1.08, 0, 0.3, 0.06, 0.3, mixHex(ochre, 0x3a2e20, 0.4));
+    pushGondola(-0.82, 1.13, 0, 0.18, 0.08, 0.18, ochre);
+    pushGondola(-0.82, 1.08, 0.155, 0.2, 0.035, 0.025, shade(accent, 0.8));
+    for (let segment = 0; segment < 6; segment++) {
+      pushGondola(
+        -0.85 - segment * 0.11,
+        0.72 - segment * 0.09,
+        0.2 + segment * 0.15,
+        0.06,
+        0.06,
+        0.28,
+        wood,
+      );
+    }
+    pushGondola(-1.48, 0.18, 1.08, 0.12, 0.06, 0.48, wood);
     const gondola = buildInstancedVoxels(gondolaCells, {
       castShadow: true,
       receiveShadow: true,

@@ -108,6 +108,14 @@ export class ShoreLife {
     add(-3.4, 2.43, 5.8, 0.4, 0.1, 0.4, 0x43504c);
     for (const x of [-3.54, -3.26]) add(x, 2.25, 5.8, 0.055, 0.4, 0.25, 0x43504c);
     lights.push({ x: -3.4, y: 2.24, z: 5.8, w: 0.23, h: 0.3, d: 0.23, color: 0xffd799 });
+    // Cleats, coiled line and a tiny bait tin make the landing feel inhabited.
+    add(-2.18, 1.7, 4.65, 0.12, 0.3, 0.12, 0x526065);
+    add(-2.18, 1.83, 4.65, 0.32, 0.08, 0.12, 0x93a19e);
+    add(-2.18, 1.51, 5.1, 0.45, 0.035, 0.4, 0xbfa47a);
+    add(-2.18, 1.54, 5.1, 0.31, 0.025, 0.27, shade(wood, 0.7));
+    add(-3.15, 1.68, 3.15, 0.42, 0.25, 0.32, 0x718c91);
+    add(-3.15, 1.82, 3.15, 0.46, 0.05, 0.36, 0xbac7bd);
+    add(-3.15, 1.85, 3.15, 0.16, 0.025, 0.12, 0x526065);
 
     // Deliberate stone trail from the clear centre to the landing.
     for (let i = 0; i < 5; i++) {

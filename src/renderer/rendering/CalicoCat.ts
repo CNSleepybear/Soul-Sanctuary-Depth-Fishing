@@ -26,10 +26,8 @@ export class CalicoCat {
 
   constructor() {
     this.group = new THREE.Group();
-    // Internal scale keeps the cat ≈0.56 units tall (fisherman is ≈1.14u), so
-    // it reads as a small companion on the diorama. External position/rotation
-    // API is untouched because the scale lives on the root group.
-    this.group.scale.setScalar(0.7);
+    // Slightly oversized companion proportions remain readable at 400×300.
+    this.group.scale.setScalar(0.85);
     this.bodyRoot = new THREE.Group();
     this.headGroup = new THREE.Group();
     this.earL = new THREE.Group();
@@ -105,8 +103,8 @@ export class CalicoCat {
     b(this.headGroup, 0.0625, 0.0625, 0.03125, eye, 0.0625, 0.15625, 0.125, false);
     b(this.headGroup, 0.03125, 0.03125, 0.03125, pupil, -0.0625, 0.15625, 0.15625, false);
     b(this.headGroup, 0.03125, 0.03125, 0.03125, pupil, 0.0625, 0.15625, 0.15625, false);
-    b(this.headGroup, 0.015625, 0.015625, 0.015625, glint, -0.05625, 0.1625, 0.171875, false);
-    b(this.headGroup, 0.015625, 0.015625, 0.015625, glint, 0.06875, 0.1625, 0.171875, false);
+    b(this.headGroup, 0.03125, 0.03125, 0.015625, glint, -0.05625, 0.1625, 0.171875, false);
+    b(this.headGroup, 0.03125, 0.03125, 0.015625, glint, 0.06875, 0.1625, 0.171875, false);
     // Whiskers
     b(this.headGroup, 0.125, 0.015625, 0.015625, cream, -0.125, 0.0625, 0.15625, false);
     b(this.headGroup, 0.125, 0.015625, 0.015625, cream, 0.125, 0.0625, 0.15625, false);

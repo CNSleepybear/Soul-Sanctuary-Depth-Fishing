@@ -1,0 +1,177 @@
+{
+  "locations": 12,
+  "errors": [],
+  "transparency": {
+    "cornerAlpha": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "coverage": 0.511826171875,
+    "passed": true
+  },
+  "budget": {
+    "maxCalls": 140,
+    "maxTriangles": 150000,
+    "violations": [],
+    "worstLocation": {
+      "calls": 89,
+      "triangles": 100852,
+      "geometries": 69,
+      "textures": 4,
+      "locationId": "uk",
+      "camera": {
+        "x": 13,
+        "y": 12,
+        "z": 13
+      }
+    }
+  },
+  "stats": {
+    "japan": {
+      "calls": 85,
+      "triangles": 110022,
+      "geometries": 65,
+      "textures": 4,
+      "locationId": "japan",
+      "camera": {
+        "x": 13,
+        "y": 12,
+        "z": 13
+      }
+    },
+    "china": {
+      "calls": 81,
+      "triangles": 120376,
+      "geometries": 61,
+      "textures": 4,
+      "locationId": "china",
+      "camera": {
+        "x": 13,
+        "y": 12,
+        "z": 13
+      }
+    },
+    "usa": {
+      "calls": 80,
+      "triangles": 104874,
+      "geometries": 60,
+      "textures": 4,
+      "locationId": "usa",
+      "camera": {
+        "x": 13,
+        "y": 12,
+        "z": 13
+      }
+    },
+    "uk": {
+      "calls": 89,
+      "triangles": 100852,
+      "geometries": 69,
+      "textures": 4,
+      "locationId": "uk",
+      "camera": {
+        "x": 13,
+        "y": 12,
+        "z": 13
+      }
+    },
+    "france": {
+      "calls": 84,
+      "triangles": 109312,
+      "geometries": 64,
+      "textures": 4,
+      "locationId": "france",
+      "camera": {
+        "x": 12.75507024490501,
+        "y": 12.07730933475836,
+        "z": 13.240399655884216
+      }
+    },
+    "germany": {
+      "calls": 85,
+      "triangles": 101778,
+      "geometries": 65,
+      "textures": 4,
+      "locationId": "germany",
+      "camera": {
+        "x": 12.328569805004992,
+        "y": 12.113938273783756,
+        "z": 13.638415104517064
+      }
+    },
+    "italy": {
+      "calls": 85,
+      "triangles": 112542,
+      "geometries": 64,
+      "textures": 4,
+      "locationId": "italy",
+      "camera": {
+        "x": 11.889695475972177,
+        "y": 12.007403214162519,
+        "z": 14.022665277637014
+      }
+    },
+    "denmark": {
+      "calls": 82,
+      "triangles": 108210,
+      "geometries": 63,
+      "textures": 4,
+      "locationId": "denmark",
+      "camera": {
+        "x": 11.425346516235974,
+        "y": 11.889825976230437,
+        "z": 14.403522381137693
+      }
+    },
+    "iceland": {
+      "calls": 78,
+      "triangles": 105394,
+      "geometries": 61,
+      "textures": 4,
+      "locationId": "iceland",
+      "camera": {
+        "x": 10.96959563743608,
+        "y": 11.913411351370543,
+        "z": 14.753574873607525
+      }
+    },
+    "thailand": {
+      "calls": 89,
+      "triangles": 102416,
+      "geometries": 70,
+      "textures": 4,
+      "locationId": "thailand",
+      "camera": {
+        "x": 10.503042327480935,
+        "y": 12.042986290259933,
+        "z": 15.089271084686091
+      }
+    },
+    "egypt": {
+      "calls": 77,
+      "triangles": 111598,
+      "geometries": 60,
+      "textures": 4,
+      "locationId": "egypt",
+      "camera": {
+        "x": 10.03347111633064,
+        "y": 12.11985214307751,
+        "z": 15.405500879807795
+      }
+    },
+    "greece": {
+      "calls": 78,
+      "triangles": 101996,
+      "geometries": 60,
+      "textures": 4,
+      "locationId": "greece",
+      "camera": {
+        "x": 9.532342620321762,
+        "y": 12.04816833844718,
+        "z": 15.720510302429666
+      }
+    }
+  }
+}

@@ -44,6 +44,7 @@ export class Fisherman {
 
   constructor() {
     this.group = new THREE.Group();
+    this.group.scale.setScalar(1.12);
     this.rodTip = new THREE.Vector3();
     this.bodyGroup = new THREE.Group();
     this.headGroup = new THREE.Group();
@@ -131,6 +132,11 @@ export class Fisherman {
     b(this.bodyGroup, 0.1875, 0.0625, 0.0625, strap, 0, 0.59375, -0.28125);
     b(this.bodyGroup, 0.0625, 0.25, 0.03125, strap, -0.125, 0.625, 0.125);
     b(this.bodyGroup, 0.0625, 0.25, 0.03125, strap, 0.125, 0.625, 0.125);
+    b(this.bodyGroup, 0.1875, 0.1875, 0.125, pack, -0.25, 0.4375, 0.09375);
+    b(this.bodyGroup, 0.1875, 0.0625, 0.125, packDark, -0.25, 0.53125, 0.09375);
+    b(this.bodyGroup, 0.0625, 0.0625, 0.03125, hat, -0.25, 0.46875, 0.15625);
+    b(this.bodyGroup, 0.0625, 0.0625, 0.03125, cream, 0, 0.625, 0.15625);
+    b(this.bodyGroup, 0.0625, 0.0625, 0.03125, hat, 0, 0.5625, 0.15625);
 
     // ── Arms ──
     // Left arm hangs; right arm reaches forward to the rod grip.
@@ -160,6 +166,9 @@ export class Fisherman {
     b(this.headGroup, 0.5625, 0.03125, 0.5, hatShade, 0, 0.25, 0.03125);
     b(this.headGroup, 0.34375, 0.03125, 0.34375, band, 0, 0.3125, 0);
     b(this.headGroup, 0.3125, 0.0625, 0.3125, hat, 0, 0.359375, 0);
+    b(this.headGroup, 0.125, 0.03125, 0.0625, hatShade, -0.125, 0.390625, 0.0625, false);
+    b(this.headGroup, 0.0625, 0.03125, 0.125, hatShade, 0.125, 0.3125, 0.1875, false);
+    b(this.headGroup, 0.125, 0.03125, 0.03125, band, -0.1875, 0.28125, 0.25, false);
 
     // ── Rod: four jointed sections, base at the hand ──
     this.rodGroup.position.set(0.21875, 0.6875, 0.25);

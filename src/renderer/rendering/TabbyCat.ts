@@ -24,10 +24,8 @@ export class TabbyCat {
 
   constructor() {
     this.group = new THREE.Group();
-    // Internal scale keeps the cat ≈0.55 units tall (fisherman is ≈1.14u), so
-    // it reads as a small companion on the diorama. External position/rotation
-    // API is untouched because the scale lives on the root group.
-    this.group.scale.setScalar(0.7);
+    // Slightly oversized companion proportions remain readable at 400×300.
+    this.group.scale.setScalar(0.85);
     this.bodyRoot = new THREE.Group();
     this.headGroup = new THREE.Group();
     this.earL = new THREE.Group();

@@ -3,7 +3,7 @@
 //
 // v2 art pass (docs/art-direction-v2.md §4.2): a shallow shelf hugs the island,
 // five depth bands fade towards the desktop, and coloured landmark reflections
-// plus instanced glints sit above them. One closed, stepped foam ring and two
+// plus instanced glints sit above them. Broken coastal foam threads and two
 // masked instanced ripple rings keep the transparent surface inexpensive.
 
 import * as THREE from 'three';
@@ -19,45 +19,40 @@ const FOAM_WIDTH = 0.1;
 const FOAM_Y = WATER_Y + 0.075;
 
 function makeFoamRing(seedOffset: number): THREE.BufferGeometry {
-  const positions = new Float32Array(FOAM_SEGMENTS * 2 * 3);
-  const indices = new Uint16Array(FOAM_SEGMENTS * 6);
+  const positions: number[] = [];
+  const indices: number[] = [];
   for (let i = 0; i < FOAM_SEGMENTS; i++) {
+    if ((i + seedOffset) % 13 < 8 || (i + seedOffset) % 17 === 8) continue;
     const angle = (i / FOAM_SEGMENTS) * Math.PI * 2;
-    const cosAngle = Math.cos(angle);
-    const sinAngle = Math.sin(angle);
-    const radius = snap(
-      INNER +
-        0.35 +
-        Math.sin(angle * 3 + seedOffset * 0.07) * 0.2 +
-        Math.cos(angle * 2 - seedOffset * 0.11) * 0.1,
-      0.25,
+    const nextAngle = ((i + 1) / FOAM_SEGMENTS) * Math.PI * 2;
+    const coast = (a: number) =>
+      5.75 +
+      Math.sin(a * 3 + seedOffset * 0.37) * 0.42 +
+      Math.cos(a * 5 - seedOffset * 0.19) * 0.18;
+    const innerRadius = coast(angle) - FOAM_WIDTH / 2;
+    const outerRadius = coast(angle) + FOAM_WIDTH / 2;
+    const nextInner = coast(nextAngle) - FOAM_WIDTH / 2;
+    const nextOuter = coast(nextAngle) + FOAM_WIDTH / 2;
+    const vertex = positions.length / 3;
+    positions.push(
+      Math.cos(angle) * innerRadius,
+      FOAM_Y,
+      Math.sin(angle) * innerRadius,
+      Math.cos(angle) * outerRadius,
+      FOAM_Y,
+      Math.sin(angle) * outerRadius,
+      Math.cos(nextAngle) * nextInner,
+      FOAM_Y,
+      Math.sin(nextAngle) * nextInner,
+      Math.cos(nextAngle) * nextOuter,
+      FOAM_Y,
+      Math.sin(nextAngle) * nextOuter,
     );
-    const innerRadius = radius - FOAM_WIDTH / 2;
-    const outerRadius = radius + FOAM_WIDTH / 2;
-    const offset = i * 6;
-    positions[offset] = cosAngle * innerRadius;
-    positions[offset + 1] = FOAM_Y;
-    positions[offset + 2] = sinAngle * innerRadius;
-    positions[offset + 3] = cosAngle * outerRadius;
-    positions[offset + 4] = FOAM_Y;
-    positions[offset + 5] = sinAngle * outerRadius;
-  }
-  for (let i = 0; i < FOAM_SEGMENTS; i++) {
-    const inner = i * 2;
-    const outer = inner + 1;
-    const nextInner = ((i + 1) % FOAM_SEGMENTS) * 2;
-    const nextOuter = nextInner + 1;
-    const offset = i * 6;
-    indices[offset] = inner;
-    indices[offset + 1] = nextInner;
-    indices[offset + 2] = nextOuter;
-    indices[offset + 3] = inner;
-    indices[offset + 4] = nextOuter;
-    indices[offset + 5] = outer;
+    indices.push(vertex, vertex + 2, vertex + 3, vertex, vertex + 3, vertex + 1);
   }
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
   geometry.computeVertexNormals();
   return geometry;
 }
@@ -122,12 +117,12 @@ export class SanctuaryWater {
 
   constructor(data: LocationData, seedText = 'sanctuary') {
     const theme = data.theme;
-    const shallow = mixHex(theme?.waterColor ?? 0x285666, 0x9dd8cd, 0.42);
-    const deep = shade(theme?.waterColor ?? 0x285666, 0.9);
-    const foamColor = mixHex(shallow, 0xf4f0e2, 0.62);
+    const shallow = mixHex(theme?.waterColor ?? 0x285666, 0x9dd8cd, 0.28);
+    const deep = shade(theme?.waterColor ?? 0x285666, 0.68);
+    const foamColor = mixHex(shallow, 0xf4f0e2, 0.56);
     const glow = theme?.art?.glow ?? theme?.uiAccent ?? 0xffcc88;
     const accent = theme?.art?.accent ?? theme?.uiAccent ?? 0xd9a15e;
-    const seedOffset = seedText.length * 17;
+    const seedOffset = Array.from(seedText).reduce((sum, char) => sum + char.charCodeAt(0), 0);
 
     // ── Five depth bands, the outer ones fading into the desktop ──
     const bandCount = 5;
@@ -155,7 +150,7 @@ export class SanctuaryWater {
         });
       }
     }
-    const opacities = [0.96, 0.84, 0.64, 0.34, 0.12];
+    const opacities = [0.94, 0.76, 0.56, 0.28, 0.08];
     bands.forEach((cells, index) => {
       if (cells.length === 0) return;
       const mesh = makeInstanced(cells, opacities[index]);
@@ -165,7 +160,7 @@ export class SanctuaryWater {
       this.group.add(mesh);
     });
 
-    // ── Foam collarette: one closed stepped ring breathing against the shore ──
+    // Broken foam threads follow the coast, with quiet gaps between wavelets.
     const foamMaterial = new THREE.MeshBasicMaterial({
       color: foamColor,
       transparent: true,
@@ -214,19 +209,19 @@ export class SanctuaryWater {
     this.glintMaterialB = meshB.material as THREE.MeshBasicMaterial;
     this.group.add(meshA, meshB);
 
-    // ── Landmark reflections: stretched colour dashes near the shore ──
+    // Broken reflections gather below the landmark instead of circling the island.
     const reflections: Tile[] = [];
-    for (let i = 0; i < 12; i++) {
-      const angle = 0.4 + i * 0.42;
-      const r = INNER + 0.9 + (i % 3) * 0.7;
+    for (let i = 0; i < 18; i++) {
+      const angle = -1.18 + (i % 6) * 0.085 + Math.sin(i * 4.3) * 0.035;
+      const r = INNER + 0.5 + Math.floor(i / 6) * 0.72 + (i % 2) * 0.16;
       reflections.push({
         x: Math.cos(angle) * r,
         y: WATER_Y + 0.055,
         z: Math.sin(angle) * r,
-        color: mixHex(i % 2 === 0 ? glow : accent, shallow, 0.25),
-        w: 0.45 + (i % 3) * 0.2,
+        color: mixHex(i % 3 === 0 ? glow : accent, shallow, 0.34),
+        w: 0.28 + ((i * 7) % 5) * 0.17,
         h: 0.03,
-        d: 0.12 + (i % 3) * 0.06,
+        d: 0.06 + (i % 3) * 0.025,
       });
     }
     const reflectionMesh = makeInstanced(reflections, 0.2, { additive: true, depthWrite: false });

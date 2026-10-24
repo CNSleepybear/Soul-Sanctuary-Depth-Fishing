@@ -1230,7 +1230,7 @@ test.describe('Art direction v2', () => {
     expect(island.group.children).toHaveLength(0);
   });
 
-  test('water keeps a closed foam band and stable resources across animation', () => {
+  test('water keeps broken coastal foam and stable resources across animation', () => {
     const water = new SanctuaryWater(LOCATIONS[0], 'japan');
     const depth: THREE.InstancedMesh[] = [];
     const ripples: THREE.InstancedMesh[] = [];
@@ -1259,11 +1259,10 @@ test.describe('Art direction v2', () => {
     expect(ripples).toHaveLength(2);
     expect(ripples[0].count).toBeLessThan(36);
     expect(ripples[1].count).toBeLessThan(28);
-    if (!foam) throw new Error('Missing continuous foam mesh');
-    expect(foam.geometry.getAttribute('position').count).toBe(128);
-    expect(foam.geometry.index?.count).toBe(64 * 6);
-    const index = foam.geometry.index!;
-    expect(Array.from(index.array.slice(-6))).toEqual([126, 0, 1, 126, 1, 127]);
+    if (!foam) throw new Error('Missing coastal foam mesh');
+    expect(foam.geometry.getAttribute('position').count).toBeLessThan(128);
+    expect(foam.geometry.getAttribute('position').count % 4).toBe(0);
+    expect(foam.geometry.index?.count).toBe(foam.geometry.getAttribute('position').count * 1.5);
     const foamGeometry = foam.geometry;
     const foamMaterial = foam.material;
     const rippleBuffers = ripples.map((mesh) => mesh.instanceMatrix);

@@ -58,10 +58,11 @@ export class FloatingIsland {
     const dirt = palette.earth;
     const stone = palette.stone;
 
-    const wobble = rng.nextFloat(0.16, 0.32);
+    const wobble = rng.nextFloat(0.48, 0.72);
     const notchAngle = rng.nextFloat(0, Math.PI * 2);
     const notchWidth = rng.nextFloat(0.35, 0.7);
     const lobes = rng.nextInt(3, 5);
+    const coastPhase = rng.nextFloat(0, Math.PI * 2);
 
     /**
      * Coastline radius at a given angle. A couple of low-frequency lobes give
@@ -70,10 +71,11 @@ export class FloatingIsland {
      */
     const edge = (angle: number): number => {
       let r = this.radius;
-      r += Math.sin(angle * lobes + 0.8) * wobble;
-      r += Math.cos(angle * 2.3 + 1.7) * 0.22;
+      r += Math.sin(angle * lobes + coastPhase) * wobble;
+      r += Math.cos(angle * 2 + coastPhase * 0.6) * 0.38;
+      r += Math.sin(angle * 7 - coastPhase) * 0.12;
       const notch = Math.max(0, Math.cos(angle - notchAngle) - Math.cos(notchWidth));
-      r -= Math.max(0, notch) * 0.9;
+      r -= Math.max(0, notch) * 1.3;
       return r;
     };
 
@@ -206,10 +208,11 @@ export class FloatingIsland {
         const coast = edge(angle) * band.radius;
         const distance = Math.hypot(cx, cz);
         if (distance > coast) continue;
-        const noise = Math.sin(cx * 1.7 + patchSeed) * 0.04 + Math.cos(cz * 2.1 - patchSeed) * 0.04;
+        const strata = Math.sin(angle * 9 + patchSeed + bandIndex * 0.8) * 0.055;
+        const broadPatch = Math.sin(cx * 0.72 + patchSeed) * Math.cos(cz * 0.58 - patchSeed) * 0.07;
         const color = base
           .clone()
-          .multiplyScalar(1 + noise + rng.nextFloat(-1, 1) * band.shadeSpread);
+          .multiplyScalar(1 + strata + broadPatch + rng.nextFloat(-0.35, 0.35) * band.shadeSpread);
         if (bandIndex === 0) {
           // Warm dry patches and cooler moss pockets keep the grass alive.
           const patch = Math.sin(cx * 0.55 + patchSeed) + Math.cos(cz * 0.47 - patchSeed);
@@ -245,6 +248,7 @@ export class FloatingIsland {
     for (let i = 0; i < count; i++) {
       const angle = rng.nextFloat(0, Math.PI * 2);
       const r = edge(angle) - rng.nextFloat(0, 0.25);
+      if (Math.hypot(Math.cos(angle) * r + 2.8, Math.sin(angle) * r - 3.9) < 2.15) continue;
       const size = rng.nextFloat(0.25, 0.6);
       const color = rng.chance(0.3) ? grassWarm : shade(grass, rng.nextFloat(0.95, 1.12));
       cells.push({
@@ -276,6 +280,7 @@ export class FloatingIsland {
       const distance = rngScatter.nextFloat(2.1, Math.max(2.4, edge(angle) - 0.9));
       const cx = Math.cos(angle) * distance;
       const cz = Math.sin(angle) * distance;
+      if (Math.hypot(cx + 2.8, cz - 3.9) < 2.15) continue;
       const kind = rngScatter.next();
       if (kind < 0.42) {
         // Flower patch: unwrapped straight into the shared instanced mesh.
